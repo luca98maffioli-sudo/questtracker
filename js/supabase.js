@@ -1,8 +1,8 @@
-const SUPABASE_URL = 'https://onlpfkjjqjvzppyuaizb.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_uCYapPQAerTsWb3VXZC1LA_AXms6RWU';
+const SUPABASE_URL = 'https://vcrfhoucpapszwraamea.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_Y9PZlWpDRTEm50opWQiQDQ_24G5J1Qz';
 
 window.SupaDB = (() => {
-    const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: 'gandalf' } });
+    const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     return {
         supa,
