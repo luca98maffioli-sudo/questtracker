@@ -1,21 +1,3 @@
-const HARDCODED_QUESTS = [
-    {
-        id: 'hc-1', title: 'Anello del Lago Nero', region: 'Valli di Lanzo',
-        type: 'trekking', difficulty: 2, xpReward: 250, distance: 8.5, elevation: 450,
-        coords: [[45.2850,7.5620],[45.2870,7.5640],[45.2890,7.5660],[45.2910,7.5650],[45.2920,7.5630],[45.2900,7.5610],[45.2880,7.5600],[45.2860,7.5610],[45.2850,7.5620]]
-    },
-    {
-        id: 'hc-2', title: 'Sentiero dei Contrabbandieri', region: 'Alta Via',
-        type: 'trekking', difficulty: 4, xpReward: 600, distance: 15.2, elevation: 1200,
-        coords: [[45.3200,7.6100],[45.3220,7.6150],[45.3250,7.6200],[45.3280,7.6180],[45.3300,7.6150],[45.3280,7.6120],[45.3250,7.6100]]
-    },
-    {
-        id: 'hc-3', title: 'Discesa Fulmine', region: 'Parco Naturale',
-        type: 'mtb', difficulty: 3, xpReward: 400, distance: 12.0, elevation: 300,
-        coords: [[45.2500,7.5800],[45.2520,7.5850],[45.2540,7.5900],[45.2560,7.5950],[45.2580,7.6000]]
-    }
-];
-
 const CLASS_AVATARS = {
     'Esploratore': '\u{1F5FA}\u{FE0F}', 'Alpinista': '\u26F0\uFE0F',
     'Biker': '\u{1F6B5}', 'Nomade': '\u{1F30D}'
@@ -155,9 +137,8 @@ class App {
             forza: 0, agilita: 0, costituzione: 0
         };
         this.fantasyResources = { rupie: 0, cristalli: 0, punti_esplorazione: 0 };
-        this.quests = [...HARDCODED_QUESTS];
         this.progress = {};
-        this.journal = [];
+
         this.savePlayer();
         this.saveJournal();
         this.showMainApp();
@@ -182,31 +163,29 @@ class App {
     }
 
     async loadQuests() {
-        if (this.userId) {
-            try {
-                const quests = await SupaDB.getQuests();
-                if (quests && quests.length > 0) {
-                    this.quests = quests.map(q => {
-                        let coords = q.coords;
-                        if (typeof coords === 'string') { try { coords = JSON.parse(coords); } catch (_) {} }
-                        return {
-                            id: q.id, title: q.title, region: q.regions?.name || '',
-                            type: q.type, difficulty: q.difficulty, xpReward: q.xp_reward,
-                            distance: Number(q.distance), elevation: q.elevation,
-                            description: q.description || null,
-                            npc_dialogue: q.npc_dialogue || null,
-                            coords
-                        };
-                    });
-                    console.log(`[QuestTracker] Caricate ${this.quests.length} quest da Supabase`);
-                    return;
-                }
-                console.warn('[QuestTracker] Supabase ha restituito 0 quest, uso fallback locale');
-            } catch (err) {
-                console.warn('[QuestTracker] Errore caricamento quest da Supabase:', err);
+        try {
+            const quests = await SupaDB.getQuests();
+            if (quests && quests.length > 0) {
+                this.quests = quests.map(q => {
+                    let coords = q.coords;
+                    if (typeof coords === 'string') { try { coords = JSON.parse(coords); } catch (_) {} }
+                    return {
+                        id: q.id, title: q.title, region: q.regions?.name || '',
+                        type: q.type, difficulty: q.difficulty, xpReward: q.xp_reward,
+                        distance: Number(q.distance), elevation: q.elevation,
+                        description: q.description || null,
+                        npc_dialogue: q.npc_dialogue || null,
+                        coords
+                    };
+                });
+                console.log(`[QuestTracker] Caricate ${this.quests.length} quest da Supabase`);
+                return;
             }
+            console.warn('[QuestTracker] Nessuna quest su Supabase');
+        } catch (err) {
+            console.warn('[QuestTracker] Errore caricamento quest:', err);
         }
-        this.quests = [...HARDCODED_QUESTS];
+        this.quests = [];
     }
 
     loadLocalProgress() {
