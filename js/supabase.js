@@ -2,7 +2,7 @@ const SUPABASE_URL = 'https://onlpfkjjqjvzppyuaizb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_uCYapPQAerTsWb3VXZC1LA_AXms6RWU';
 
 window.SupaDB = (() => {
-    const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: 'gandalf' } });
 
     return {
         supa,
@@ -18,11 +18,17 @@ window.SupaDB = (() => {
             if (si?.user) return si.user;
 
             const { data: su } = await supa.auth.signUp({ email, password });
-            return su?.user;
+            if (su?.user) {
+                if (su.session) return su.user;
+                const { data: si2 } = await supa.auth.signInWithPassword({ email, password });
+                if (si2?.user) return si2.user;
+            }
+            throw new Error('Impossibile autenticarsi con Supabase');
         },
 
         async getQuests() {
-            const { data } = await supa.from('quests').select('*, regions(name)');
+            const { data, error } = await supa.from('quests').select('*, regions(name)');
+            if (error) throw error;
             return data || [];
         },
 

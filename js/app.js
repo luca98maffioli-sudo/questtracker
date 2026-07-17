@@ -59,11 +59,17 @@ class App {
                 try {
                     const { data: { session } } = await SupaDB.supa.auth.getSession();
                     if (!session) {
+                        console.warn('[QuestTracker] Nessuna sessione valida al refresh, mostra login');
                         this.player = null;
                         this.userId = null;
                         localStorage.removeItem('questtracker_player');
                     }
-                } catch (_) {}
+                } catch (err) {
+                    console.warn('[QuestTracker] Errore verifica sessione:', err);
+                    this.player = null;
+                    this.userId = null;
+                    localStorage.removeItem('questtracker_player');
+                }
             }
             if (this.player) {
                 await this.loadQuests();
@@ -167,16 +173,25 @@ class App {
             try {
                 const quests = await SupaDB.getQuests();
                 if (quests && quests.length > 0) {
-                    this.quests = quests.map(q => ({
-                        id: q.id, title: q.title, region: q.regions?.name || '',
-                        type: q.type, difficulty: q.difficulty, xpReward: q.xp_reward,
-                        distance: Number(q.distance), elevation: q.elevation,
-                        description: q.description, npc_dialogue: q.npc_dialogue,
-                        coords: q.coords
-                    }));
+                    this.quests = quests.map(q => {
+                        let coords = q.coords;
+                        if (typeof coords === 'string') { try { coords = JSON.parse(coords); } catch (_) {} }
+                        return {
+                            id: q.id, title: q.title, region: q.regions?.name || '',
+                            type: q.type, difficulty: q.difficulty, xpReward: q.xp_reward,
+                            distance: Number(q.distance), elevation: q.elevation,
+                            description: q.description || null,
+                            npc_dialogue: q.npc_dialogue || null,
+                            coords
+                        };
+                    });
+                    console.log(`[QuestTracker] Caricate ${this.quests.length} quest da Supabase`);
                     return;
                 }
-            } catch (_) {}
+                console.warn('[QuestTracker] Supabase ha restituito 0 quest, uso fallback locale');
+            } catch (err) {
+                console.warn('[QuestTracker] Errore caricamento quest da Supabase:', err);
+            }
         }
         this.quests = [...HARDCODED_QUESTS];
     }
@@ -232,7 +247,9 @@ class App {
                 total_time: this.player.totalTime,
                 forza: this.player.forza, agilita: this.player.agilita, costituzione: this.player.costituzione
             }).eq('user_id', this.userId);
-        } catch (_) {}
+        } catch (err) {
+            console.warn('[QuestTracker] Sync fallito:', err);
+        }
     }
 
     showMainApp() {
