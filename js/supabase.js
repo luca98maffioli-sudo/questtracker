@@ -17,12 +17,20 @@ window.SupaDB = (() => {
             const { data: si } = await supa.auth.signInWithPassword({ email, password });
             if (si?.user) return si.user;
 
-            const { data: su } = await supa.auth.signUp({ email, password });
-            if (su?.user) {
-                if (su.session) return su.user;
-                const { data: si2 } = await supa.auth.signInWithPassword({ email, password });
-                if (si2?.user) return si2.user;
+            try {
+                const { data: su } = await supa.auth.signUp({ email, password });
+                if (su?.user) {
+                    if (su.session) return su.user;
+                    const { data: si2 } = await supa.auth.signInWithPassword({ email, password });
+                    if (si2?.user) return si2.user;
+                }
+            } catch (_) {
+                // signUp fallito (es. utente già esistente) — riprova signIn
             }
+
+            const { data: si3 } = await supa.auth.signInWithPassword({ email, password });
+            if (si3?.user) return si3.user;
+
             throw new Error('Impossibile autenticarsi con Supabase');
         },
 
