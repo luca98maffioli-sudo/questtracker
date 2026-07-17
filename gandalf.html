@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuestTracker RPG</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+    <div class="login-screen" id="loginScreen">
+        <div class="login-card">
+            <div class="login-title">&#9876;&#65039; QUESTTRACKER</div>
+            <div class="login-subtitle">Trasforma le tue avventure in epiche quest</div>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label">Nome Eroe</label>
+                    <input type="text" class="form-input" id="username" placeholder="Es. Aragorn" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Classe</label>
+                    <select class="form-select" id="playerClass" required>
+                        <option value="">Scegli la tua classe</option>
+                        <option value="Esploratore">&#x1F5FA;&#65039; Esploratore</option>
+                        <option value="Alpinista">&#x26F0;&#65039; Alpinista</option>
+                        <option value="Biker">&#x1F6B5; Biker</option>
+                        <option value="Nomade">&#x1F30D; Nomade</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" id="loginBtn">&#9876;&#65039; Inizia l'Avventura</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="mainApp" class="hidden">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">&#9876;&#65039; QUESTTRACKER</div>
+                <div class="user-info">
+                    <div class="user-details">
+                        <div class="user-name" id="headerUsername">Eroe</div>
+                        <div class="user-level pixel-font" id="headerLevel">Lv.1</div>
+                    </div>
+                    <div class="user-avatar" id="headerAvatar">&#x1F5E1;&#65039;</div>
+                </div>
+            </div>
+        </header>
+
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-screen="hero">&#x2694;&#65039; Eroe</button>
+            <button class="nav-tab" data-screen="quests">&#x1F4DC; Quest</button>
+            <button class="nav-tab" data-screen="fantasy">&#x1F3DE;&#65039; Mondo F.</button>
+            <button class="nav-tab" data-screen="map">&#x1F5FA;&#65039; Mappa</button>
+        </nav>
+
+        <main class="container">
+            <!-- Eroe -->
+            <section class="screen active" id="heroScreen">
+                <div class="hero-header">
+                    <div class="hero-avatar-frame">
+                        <div class="hero-avatar" id="heroAvatarIcon">&#x1F5E1;&#65039;</div>
+                    </div>
+                    <div class="hero-info">
+                        <div class="hero-name pixel-font" id="heroName">Eroe</div>
+                        <div class="hero-class" id="heroClassLabel">Esploratore</div>
+                        <div class="hero-level pixel-font">Lv.<span id="heroLevel">1</span></div>
+                    </div>
+                </div>
+                <div class="hero-xp-card">
+                    <div class="xp-label">
+                        <span>ESPERIENZA</span>
+                        <span class="xp-numbers"><span id="xpCurrent">0</span> / <span id="xpTotal">1000</span></span>
+                    </div>
+                    <div class="xp-bar">
+                        <div class="xp-bar-fill" id="xpBarFill" style="width: 0%">
+                            <div class="xp-glow"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-columns">
+                    <div class="hero-card">
+                        <div class="hero-card-title">&#x1F3C6; Mondo Reale</div>
+                        <div class="stat-list">
+                            <div class="stat-item"><span class="stat-icon">&#x1F4CF;</span><span class="stat-label">Km totali</span><span class="stat-val" id="totalDistance">0</span></div>
+                            <div class="stat-item"><span class="stat-icon">&#x26F0;&#65039;</span><span class="stat-label">Dislivello</span><span class="stat-val" id="totalElevation">0</span></div>
+                            <div class="stat-item"><span class="stat-icon">&#x23F1;&#65039;</span><span class="stat-label">Ore attività</span><span class="stat-val" id="totalTime">0</span></div>
+                            <div class="stat-item"><span class="stat-icon">&#x1F4DC;</span><span class="stat-label">Quest completate</span><span class="stat-val" id="questsCompleted">0</span></div>
+                        </div>
+                    </div>
+                    <div class="hero-card">
+                        <div class="hero-card-title">&#x2694;&#65039; Attributi</div>
+                        <div class="attrs">
+                            <div class="attr-row">
+                                <div class="attr-hdr"><span class="attr-name">FORZA</span><span class="attr-val" id="statForza">0</span></div>
+                                <div class="attr-track"><div class="attr-fill str-fill" id="attrFillForza" style="width: 0%"></div></div>
+                            </div>
+                            <div class="attr-row">
+                                <div class="attr-hdr"><span class="attr-name">AGILITÀ</span><span class="attr-val" id="statAgilita">0</span></div>
+                                <div class="attr-track"><div class="attr-fill agi-fill" id="attrFillAgilita" style="width: 0%"></div></div>
+                            </div>
+                            <div class="attr-row">
+                                <div class="attr-hdr"><span class="attr-name">COSTITUZIONE</span><span class="attr-val" id="statCostituzione">0</span></div>
+                                <div class="attr-track"><div class="attr-fill con-fill" id="attrFillCostituzione" style="width: 0%"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-card resources-card">
+                    <div class="hero-card-title">&#x1F4B0; Borsellino</div>
+                    <div class="res-row">
+                        <div class="res-item"><span class="res-icon">&#x1FA99;</span><span class="res-val" id="resRupie">0</span><span class="res-label">Rupie</span></div>
+                        <div class="res-divider"></div>
+                        <div class="res-item"><span class="res-icon">&#x1F48E;</span><span class="res-val" id="resCristalli">0</span><span class="res-label">Cristalli</span></div>
+                        <div class="res-divider"></div>
+                        <div class="res-item"><span class="res-icon">&#x1F5FA;&#65039;</span><span class="res-val" id="resEsplorazione">0</span><span class="res-label">P. Esplorazione</span></div>
+                    </div>
+                </div>
+                <div class="hero-card" id="combatCard">
+                    <div class="hero-card-title">&#x2694;&#xFE0F; Sfide</div>
+                    <div id="combatCardContent"></div>
+                </div>
+                <div class="hero-card journal-card">
+                    <div class="hero-card-title">&#x1F4DC; Diario di Bordo</div>
+                    <div class="journal-list" id="journalList"></div>
+                </div>
+            </section>
+
+            <!-- Quests -->
+            <section class="screen" id="questsScreen">
+                <div class="quest-filters">
+                    <button class="filter-btn active" data-filter="all">Tutte</button>
+                    <button class="filter-btn" data-filter="available">Disponibili</button>
+                    <button class="filter-btn" data-filter="completed">Completate</button>
+                    <button class="filter-btn" data-filter="trekking">Trekking</button>
+                    <button class="filter-btn" data-filter="mtb">MTB</button>
+                </div>
+                <div id="questList"></div>
+            </section>
+
+            <!-- Mondo Fantasy -->
+            <section class="screen" id="fantasyScreen">
+                <div id="fantasyMapContent"></div>
+            </section>
+
+            <!-- Mappa Reale -->
+            <section class="screen" id="mapScreen">
+                <div id="map"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Quest Detail Overlay -->
+    <div class="overlay" id="questDetailOverlay">
+        <div class="overlay-content" id="questDetailContent">
+            <div class="quest-detail-icon" id="qdIcon">&#x1F97E;</div>
+            <div class="quest-detail-title pixel-font" id="qdTitle">Titolo</div>
+            <div class="quest-detail-region" id="qdRegion">Regione</div>
+            <div class="quest-detail-lore" id="qdLore">Lore text...</div>
+            <div class="quest-dialogue-box" id="qdDialogue">
+                <div class="dialogue-npc">NPC:</div>
+                <div class="dialogue-text" id="qdDialogueText">Testo dialogo...</div>
+            </div>
+            <div class="quest-detail-reqs" id="qdReqs">
+                <span>&#x1F4CF; <span id="qdDist">0</span> km</span>
+                <span>&#x26F0;&#xFE0F; <span id="qdElev">0</span>m</span>
+                <span class="quest-xp">&#x26A1; <span id="qdXp">0</span> XP</span>
+            </div>
+            <div class="quest-detail-btns">
+                <button class="btn btn-primary" id="qdStartBtn">&#x2694;&#xFE0F; Inizia Avventura</button>
+                <button class="btn btn-secondary" id="qdCancelBtn">&#x2716; Annulla</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Combat Overlay -->
+    <div class="overlay" id="combatOverlay">
+        <div class="overlay-content">
+            <div class="quest-detail-icon" id="combatIcon">&#x1F47A;</div>
+            <div class="quest-detail-title pixel-font" id="combatName">Mostro</div>
+            <div class="quest-detail-region" id="combatDesc">Descrizione...</div>
+            <div class="combat-reqs" id="combatReqs"></div>
+            <div class="combat-rewards" id="combatRewards"></div>
+            <div class="combat-result hidden" id="combatResult"></div>
+            <div class="quest-detail-btns">
+                <button class="btn btn-primary" id="combatAttackBtn">&#x2694;&#xFE0F; Attacca!</button>
+                <button class="btn btn-secondary hidden" id="combatCloseBtn">&#x2716; Chiudi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tracking -->
+    <div class="tracking-screen" id="trackingScreen">
+        <div class="tracking-header">
+            <div style="font-size: 14px; font-weight: 700;" id="trackingTitle">Quest</div>
+        </div>
+        <div class="tracking-map">
+            <div id="trackingMap"></div>
+        </div>
+        <div class="tracking-stats">
+            <div class="stats-grid">
+                <div class="mini-stat">
+                    <div class="mini-stat-value" id="trackDistance">0.00</div>
+                    <div class="mini-stat-label">Km</div>
+                </div>
+                <div class="mini-stat">
+                    <div class="mini-stat-value" id="trackElevation">0</div>
+                    <div class="mini-stat-label">Dislivello +</div>
+                </div>
+                <div class="mini-stat">
+                    <div class="mini-stat-value" id="trackTime">00:00</div>
+                    <div class="mini-stat-label">Tempo</div>
+                </div>
+            </div>
+            <div class="tracking-controls">
+                <button class="btn btn-secondary" id="pauseBtn">&#x23F8;&#65039; Pausa</button>
+                <button class="btn btn-danger" id="stopBtn">&#x23F9;&#65039; Termina</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Completion Modal -->
+    <div class="modal-overlay" id="completionModal">
+        <div class="modal-box">
+            <div class="modal-icon" id="modalIcon">&#x1F389;</div>
+            <div class="modal-title pixel-font" id="modalTitle">Quest Completata!</div>
+            <div class="modal-text" id="modalText">Hai guadagnato esperienza</div>
+            <button class="btn btn-primary" id="modalCloseBtn">&#x2728; Continua</button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/game-engine.js"></script>
+    <script src="js/gps-tracker.js"></script>
+    <script src="js/bridge-engine.js"></script>
+    <script src="js/fantasy-map.js"></script>
+    <script src="js/combat-engine.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(function(err) {
+                console.warn('SW registration failed:', err);
+            });
+        }
+    </script>
+</body>
+</html>
