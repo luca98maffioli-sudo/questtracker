@@ -250,11 +250,13 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_update_player_stats_timestamp ON player_stats;
 CREATE TRIGGER trg_update_player_stats_timestamp
     BEFORE UPDATE ON player_stats
     FOR EACH ROW
     EXECUTE FUNCTION update_timestamp();
 
+DROP TRIGGER IF EXISTS trg_update_fantasy_resources_timestamp ON player_fantasy_resources;
 CREATE TRIGGER trg_update_fantasy_resources_timestamp
     BEFORE UPDATE ON player_fantasy_resources
     FOR EACH ROW

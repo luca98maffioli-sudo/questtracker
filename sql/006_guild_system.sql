@@ -3,7 +3,12 @@
 -- Esegui DOPO full_schema.sql (sicuro anche se già eseguito)
 -- ============================================================================
 
--- ============================================================================
+-- 0. PULIZIA (per esecuzioni multiple sicure)
+DROP TABLE IF EXISTS player_active_quests CASCADE;
+DROP TABLE IF EXISTS player_area_progress CASCADE;
+DROP TABLE IF EXISTS player_items CASCADE;
+DROP TABLE IF EXISTS player_titles CASCADE;
+
 -- 1. NUOVE COLONNE su tabelle esistenti
 -- ============================================================================
 
@@ -78,7 +83,7 @@ CREATE TABLE IF NOT EXISTS player_active_quests (
     quest_id uuid NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
     quest_type text NOT NULL CHECK (quest_type IN ('normal', 'grande_avventura')),
     accepted_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT unique_user_quest UNIQUE (user_id, quest_id)
+    CONSTRAINT unique_active_user_quest UNIQUE (user_id, quest_id)
 );
 
 -- 2f. Progresso aree (sblocco, boss sbloccato, completata)
