@@ -25,6 +25,12 @@ class App {
         this.journal = [];
         this.dayOffset = 0;
         this.combatEngine = null;
+        this.activeQuests = [];
+        this.areaProgress = [];
+        this.itemsCatalog = [];
+        this.playerItems = [];
+        this.playerTitles = [];
+        this.titlesCatalog = [];
 
         this.init();
     }
@@ -65,6 +71,7 @@ class App {
             if (this.player) {
                 await this.loadQuests();
                 this.loadLocalProgress();
+                if (this.userId) await this.initGuild();
             }
         }
         if (this.player) this.showMainApp();
@@ -120,6 +127,7 @@ class App {
             await this.refreshPlayerFromSupabase(this.userId, username, playerClass);
             this.savePlayer();
             await this.loadQuests();
+            await this.initGuild();
             this.showMainApp();
         } catch (err) {
             console.warn('Supabase login failed, using local mode:', err);
@@ -162,6 +170,13 @@ class App {
         this.fantasyResources = resources || { rupie: 100, cristalli: 0, punti_esplorazione: 0 };
     }
 
+    async refreshFantasyResources() {
+        if (!this.userId) return;
+        const r = await SupaDB.getResources(this.userId);
+        if (r) this.fantasyResources = r;
+        this.savePlayer();
+    }
+
     async loadQuests() {
         try {
             const quests = await SupaDB.getQuests();
@@ -175,7 +190,8 @@ class App {
                         distance: Number(q.distance), elevation: q.elevation,
                         description: q.description || null,
                         npc_dialogue: q.npc_dialogue || null,
-                        coords
+                        coords, quest_type: q.quest_type || 'normal', area_id: q.area_id,
+                        emoji: q.emoji || ''
                     };
                 });
                 console.log(`[QuestTracker] Caricate ${this.quests.length} quest da Supabase`);
@@ -260,6 +276,7 @@ class App {
         document.getElementById(`${screen}Screen`).classList.add('active');
         if (screen === 'map') setTimeout(() => this.map?.invalidateSize(), 100);
         if (screen === 'fantasy') this.initFantasyMap();
+        if (screen === 'guild') this.renderGuild();
     }
 
     initFantasyMap() {
@@ -536,6 +553,7 @@ class App {
         }
 
         this.syncQuestToSupabase(quest, stats);
+        this.completeGuildQuest(quest, stats);
 
         document.getElementById('trackingScreen').classList.remove('active');
         this.showCompletionModal(leveledUp, quest, bridgeResult);
@@ -576,6 +594,22 @@ class App {
         setTimeout(() => wrapper.remove(), 2500);
     }
 
+    async completeGuildQuest(quest, stats) {
+        if (!this.userId || !quest) return;
+        const active = this.activeQuests?.find(aq => aq.quest_id == quest.id);
+        if (!active) return;
+        try {
+            await SupaDB.completeQuestWithProgress(this.userId, quest.id);
+            await this.initGuild();
+            await this.refreshFantasyResources();
+            this.renderGuild();
+            this.addJournalEntry('quest', 'Avanzamento Gilda',
+                `La quest "${quest.title}" è stata completata e registrata nella Gilda.`);
+        } catch (err) {
+            console.warn('[QuestTracker] Guild completion error:', err);
+        }
+    }
+
     async syncQuestToSupabase(quest, stats) {
         if (!this.userId) return;
         try {
@@ -602,6 +636,218 @@ class App {
                 }
             }
         } catch (err) { console.warn('Supabase sync failed:', err); }
+    }
+
+    // ── Guild System ──
+
+    async initGuild() {
+        if (!this.userId) return;
+        try {
+            this.activeQuests = await SupaDB.getActiveQuests(this.userId);
+            this.areaProgress = await SupaDB.getAreaProgress(this.userId);
+            this.itemsCatalog = await SupaDB.getItems();
+            this.titlesCatalog = await SupaDB.getTitles();
+            this.playerItems = await SupaDB.getPlayerItems(this.userId);
+            this.playerTitles = await SupaDB.getPlayerTitles(this.userId);
+        } catch (err) {
+            console.warn('[QuestTracker] Guild init error:', err);
+            this.activeQuests = [];
+            this.areaProgress = [];
+            this.itemsCatalog = [];
+            this.playerItems = [];
+            this.playerTitles = [];
+        }
+    }
+
+    renderGuild() {
+        this.renderGrandeAvventura();
+        this.renderActiveQuests();
+        this.renderBacheca();
+        this.renderMerchant();
+    }
+
+    renderGrandeAvventura() {
+        const gaProgress = this.areaProgress.find(a => a.fantasy_map_areas?.boss_quest_id);
+        if (!gaProgress) {
+            document.getElementById('gaStatus').textContent = 'Completa le quest della tua area per sbloccare la Grande Avventura!';
+            return;
+        }
+        const area = gaProgress.fantasy_map_areas;
+        const bossQuest = this.quests.find(q => q.id === area.boss_quest_id);
+        if (!bossQuest) return;
+        document.getElementById('gaQuestName').textContent = bossQuest.title;
+        document.getElementById('gaChapter').textContent = bossQuest.description || '';
+        if (gaProgress.is_completed) {
+            document.getElementById('gaStatus').innerHTML = '✅ Completata!';
+            document.getElementById('gaProgressFill').style.width = '100%';
+        } else if (this.activeQuests.some(aq => aq.quest_id === area.boss_quest_id)) {
+            document.getElementById('gaStatus').innerHTML = '📌 Attiva — esci e completa la quest!';
+            document.getElementById('gaProgressFill').style.width = '50%';
+        } else if (gaProgress.is_boss_unlocked) {
+            document.getElementById('gaStatus').innerHTML = '⬆️ Accetta la quest per iniziare';
+            document.getElementById('gaProgressFill').style.width = '0%';
+        } else {
+            document.getElementById('gaStatus').innerHTML = `🔒 Sblocca dopo ${area.required_quests_completed || 5} quest completate`;
+            document.getElementById('gaProgressFill').style.width = '0%';
+        }
+    }
+
+    renderActiveQuests() {
+        const list = document.getElementById('activeQuestsList');
+        const count = document.getElementById('activeQuestCount');
+        const active = this.activeQuests || [];
+        count.textContent = `${active.length}/2`;
+        if (active.length === 0) {
+            list.innerHTML = '<div class="empty-state">Nessuna quest attiva. Scegli dalla bacheca!</div>';
+            return;
+        }
+        list.innerHTML = active.map(aq => {
+            const q = aq.quests;
+            if (!q) return '';
+            const isGA = q.quest_type === 'grande_avventura';
+            return `<div class="guild-card ${isGA ? 'ga-quest' : ''}">
+                <div class="guild-card-title">${aq.quests_emoji || q.emoji || ''} ${q.title}</div>
+                <div class="guild-card-meta">${q.difficulty || ''}${q.distance ? ' · ' + q.distance + 'km' : ''}${q.elevation ? ' · ' + q.elevation + 'm D+' : ''}</div>
+                <div class="guild-card-progress">${isGA ? '⚔️ Grande Avventura' : 'Completala con una attività'}</div>
+            </div>`;
+        }).join('');
+    }
+
+    renderBacheca() {
+        const list = document.getElementById('bachecaList');
+        const areas = this.areaProgress || [];
+        const currentArea = areas.find(a => a.is_unlocked && !a.is_completed);
+        if (!currentArea) {
+            list.innerHTML = '<div class="empty-state">Nessuna area disponibile.</div>';
+            return;
+        }
+        const areaMeta = currentArea.fantasy_map_areas;
+        document.getElementById('currentAreaName').textContent = areaMeta?.name || 'Sconosciuta';
+        const needed = areaMeta?.required_quests_completed || 5;
+        const done = currentArea.normal_quests_done || 0;
+        document.getElementById('currentAreaProgress').textContent = `(${done}/${needed} quest completate)`;
+
+        const activeIds = new Set((this.activeQuests || []).map(aq => aq.quest_id));
+        const areaQuests = (this.quests || []).filter(q =>
+            q.area_id === currentArea.area_id && q.quest_type === 'normal' && !this.progress[q.id]);
+        const freeSlots = 2 - (this.activeQuests || []).filter(aq => aq.quests?.quest_type !== 'grande_avventura').length;
+
+        if (areaQuests.length === 0) {
+            const allDone = (this.quests || []).filter(q =>
+                q.area_id === currentArea.area_id && q.quest_type === 'normal').every(q => this.progress[q.id]);
+            list.innerHTML = allDone
+                ? '<div class="empty-state">Tutte le quest completate! Torna presto per nuove sfide.</div>'
+                : '<div class="empty-state">Nessuna quest disponibile in quest\'area.</div>';
+            return;
+        }
+        list.innerHTML = areaQuests.map(q => {
+            const isActive = activeIds.has(q.id);
+            return `<div class="guild-card ${isActive ? 'active' : ''}">
+                <div class="guild-card-title">${q.emoji || ''} ${q.title}</div>
+                <div class="guild-card-desc">${q.description || ''}</div>
+                <div class="guild-card-meta">${q.difficulty || 'media'}${q.distance ? ' · ' + q.distance + 'km' : ''}${q.elevation ? ' · ' + q.elevation + 'm' : ''} · ${q.xp_reward || 0} XP</div>
+                ${!isActive && freeSlots > 0 ? `<button class="btn-accept" data-quest-id="${q.id}">➕ Accetta</button>` : ''}
+                ${isActive ? '<span class="badge-active">✅ Accettata</span>' : ''}
+            </div>`;
+        }).join('');
+
+        list.querySelectorAll('.btn-accept').forEach(btn => {
+            btn.addEventListener('click', () => this.handleAcceptQuest(btn.dataset.questId));
+        });
+    }
+
+    async handleAcceptQuest(questId) {
+        if (!this.userId) return;
+        const active = this.activeQuests || [];
+        const normalCount = active.filter(aq => aq.quests?.quest_type !== 'grande_avventura').length;
+        if (normalCount >= 2) {
+            alert('Hai già 2 quest attive! Completane una prima di accettarne un\'altra.');
+            return;
+        }
+        try {
+            const result = await SupaDB.acceptQuest(this.userId, questId);
+            if (result === false || result === null) {
+                alert('Impossibile accettare la quest. Forse è già attiva o l\'area non è sbloccata.');
+                return;
+            }
+            await this.initGuild();
+            this.renderGuild();
+            this.addJournalEntry('quest', 'Nuova Quest Accettata',
+                `Hai accettato la quest: ${this.quests.find(q => q.id == questId)?.title || ''}`);
+        } catch (err) {
+            console.warn('[QuestTracker] Accept quest error:', err);
+            alert('Errore durante l\'accettazione della quest.');
+        }
+    }
+
+    renderMerchant() {
+        const list = document.getElementById('merchantList');
+        const resources = this.fantasyResources || { rupie: 0, cristalli: 0 };
+        document.getElementById('merchantRupie').textContent = resources.rupie || 0;
+        document.getElementById('merchantCristalli').textContent = resources.cristalli || 0;
+
+        const items = this.itemsCatalog || [];
+        const ownedIds = new Set((this.playerItems || []).map(pi => pi.item_id));
+        const equippedIds = new Set((this.playerItems || []).filter(pi => pi.equipped).map(pi => pi.item_id));
+
+        if (items.length === 0) {
+            list.innerHTML = '<div class="empty-state">Nessun oggetto disponibile al momento.</div>';
+            return;
+        }
+        list.innerHTML = items.map(item => {
+            const owned = ownedIds.has(item.id);
+            const equipped = equippedIds.has(item.id);
+            const canAfford = (resources.rupie || 0) >= item.cost_rupie && (resources.cristalli || 0) >= item.cost_cristalli;
+            return `<div class="guild-card merchant-item ${owned ? 'owned' : ''}">
+                <div class="guild-card-title">${item.emoji || ''} ${item.name}</div>
+                <div class="guild-card-desc">${item.description || ''}</div>
+                <div class="guild-card-meta">
+                    🪙 ${item.cost_rupie} Rupie ${item.cost_cristalli > 0 ? '💎 ' + item.cost_cristalli + ' Cristalli' : ''}
+                    · Slot: ${item.slot || 'generico'}
+                </div>
+                ${!owned ? `<button class="btn-buy" data-item-id="${item.id}" ${!canAfford ? 'disabled' : ''}>🛒 Compra (${item.cost_rupie}R)</button>` : ''}
+                ${owned && !equipped ? `<button class="btn-equip" data-item-id="${item.id}">🎒 Equipaggia</button>` : ''}
+                ${owned && equipped ? `<span class="badge-equipped">✅ Equipaggiato</span>` : ''}
+            </div>`;
+        }).join('');
+
+        list.querySelectorAll('.btn-buy').forEach(btn => {
+            btn.addEventListener('click', () => this.handleBuyItem(btn.dataset.itemId));
+        });
+        list.querySelectorAll('.btn-equip').forEach(btn => {
+            btn.addEventListener('click', () => this.handleEquipItem(btn.dataset.itemId));
+        });
+    }
+
+    async handleBuyItem(itemId) {
+        if (!this.userId) return;
+        try {
+            const result = await SupaDB.purchaseItem(this.userId, itemId);
+            if (!result) {
+                alert('Acquisto fallito. Rupie o Cristalli insufficienti!');
+                return;
+            }
+            const item = this.itemsCatalog.find(i => i.id == itemId);
+            await this.refreshFantasyResources();
+            this.playerItems = await SupaDB.getPlayerItems(this.userId);
+            this.renderMerchant();
+            this.addJournalEntry('item', 'Acquisto', `Hai comprato: ${item?.name || 'oggetto'}`);
+        } catch (err) {
+            console.warn('[QuestTracker] Purchase error:', err);
+            alert('Errore durante l\'acquisto.');
+        }
+    }
+
+    async handleEquipItem(itemId) {
+        if (!this.userId) return;
+        try {
+            await SupaDB.equipItem(this.userId, itemId);
+            this.playerItems = await SupaDB.getPlayerItems(this.userId);
+            this.renderMerchant();
+        } catch (err) {
+            console.warn('[QuestTracker] Equip error:', err);
+            alert('Errore durante l\'equipaggiamento.');
+        }
     }
 
     initMap() {

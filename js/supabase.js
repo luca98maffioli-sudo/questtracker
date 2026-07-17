@@ -99,6 +99,76 @@ window.SupaDB = (() => {
                     p_title: e.title, p_description: e.desc
                 }).catch(() => {});
             }
+        },
+
+        // -- Guild System --
+
+        async getAreaProgress(userId) {
+            const { data } = await supa.from('player_area_progress')
+                .select('*, fantasy_map_areas(name, emoji, required_quests_completed, unlock_order, boss_quest_id)')
+                .eq('user_id', userId);
+            return data || [];
+        },
+
+        async getActiveQuests(userId) {
+            const { data } = await supa.from('player_active_quests')
+                .select('*, quests(title, type, difficulty, xp_reward, distance, elevation, description, region_id, area_id, coords, npc_dialogue, lore)')
+                .eq('user_id', userId);
+            return data || [];
+        },
+
+        async getItems() {
+            const { data } = await supa.from('items_catalog').select('*').order('cost_rupie');
+            return data || [];
+        },
+
+        async getPlayerItems(userId) {
+            const { data } = await supa.from('player_items')
+                .select('*, items_catalog(*)')
+                .eq('user_id', userId);
+            return data || [];
+        },
+
+        async getTitles() {
+            const { data } = await supa.from('titles_catalog').select('*').order('sort_order');
+            return data || [];
+        },
+
+        async getPlayerTitles(userId) {
+            const { data } = await supa.from('player_titles')
+                .select('*, titles_catalog(*)')
+                .eq('user_id', userId);
+            return data || [];
+        },
+
+        async acceptQuest(userId, questId) {
+            const { data } = await supa.rpc('accept_quest', { p_user_id: userId, p_quest_id: questId });
+            return data;
+        },
+
+        async completeQuestWithProgress(userId, questId) {
+            const { data } = await supa.rpc('complete_quest_and_check_progress', { p_user_id: userId, p_quest_id: questId });
+            return data;
+        },
+
+        async purchaseItem(userId, itemId) {
+            const { data } = await supa.rpc('purchase_item', { p_user_id: userId, p_item_id: itemId });
+            return data;
+        },
+
+        async equipItem(userId, itemId) {
+            const { data } = await supa.rpc('equip_item', { p_user_id: userId, p_item_id: itemId });
+            return data;
+        },
+
+        async unequipItem(userId, itemId) {
+            const { data } = await supa.rpc('unequip_item', { p_user_id: userId, p_item_id: itemId });
+            return data;
+        },
+
+        async checkTitles(userId) {
+            const { data } = await supa.rpc('check_player_titles', { p_user_id: userId });
+            return data;
         }
     };
 })();

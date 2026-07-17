@@ -50,6 +50,7 @@
 
         <nav class="nav-tabs">
             <button class="nav-tab active" data-screen="hero">&#x2694;&#65039; Eroe</button>
+            <button class="nav-tab" data-screen="guild">&#x1F3F0; Gilda</button>
             <button class="nav-tab" data-screen="quests">&#x1F4DC; Quest</button>
             <button class="nav-tab" data-screen="fantasy">&#x1F3DE;&#65039; Mondo F.</button>
             <button class="nav-tab" data-screen="map">&#x1F5FA;&#65039; Mappa</button>
@@ -124,6 +125,48 @@
                 <div class="hero-card journal-card">
                     <div class="hero-card-title">&#x1F4DC; Diario di Bordo</div>
                     <div class="journal-list" id="journalList"></div>
+                </div>
+            </section>
+
+            <!-- Gilda -->
+            <section class="screen" id="guildScreen">
+                <!-- Grande Avventura -->
+                <div class="ga-banner" id="gaBanner">
+                    <div class="ga-title">&#x1F4DC; Grande Avventura</div>
+                    <div class="ga-name pixel-font" id="gaQuestName">La Caccia al Drago d'Oro</div>
+                    <div class="ga-chapter" id="gaChapter">Capitolo 1: Il Custode della Foresta</div>
+                    <div class="ga-status" id="gaStatus">&#x23F3; Caricamento...</div>
+                    <div class="ga-progress-bar">
+                        <div class="ga-progress-fill" id="gaProgressFill" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Quest Attive -->
+                <div class="guild-section">
+                    <div class="guild-section-title">&#x2694;&#xFE0F; Quest Attive <span class="active-count" id="activeQuestCount">0/2</span></div>
+                    <div id="activeQuestsList"><div class="empty-state">Nessuna quest attiva. Scegli dalla bacheca!</div></div>
+                </div>
+
+                <!-- Bacheca -->
+                <div class="guild-section">
+                    <div class="guild-section-title">&#x1F4CB; Bacheca</div>
+                    <div class="guild-area-info" id="guildAreaInfo">
+                        <span class="area-label">Area:</span>
+                        <span class="area-name" id="currentAreaName">Foresta dei Sussurri</span>
+                        <span class="area-progress" id="currentAreaProgress"></span>
+                    </div>
+                    <div id="bachecaList"><div class="empty-state">&#x23F3; Caricamento quest...</div></div>
+                </div>
+
+                <!-- Mercante -->
+                <div class="guild-section">
+                    <div class="guild-section-title">&#x1F6CD; Mercante</div>
+                    <div class="merchant-res" id="merchantResources">
+                        <span>&#x1FA99; <b id="merchantRupie">0</b> Rupie</span>
+                        <span class="res-divider">|</span>
+                        <span>&#x1F48E; <b id="merchantCristalli">0</b> Cristalli</span>
+                    </div>
+                    <div id="merchantList"><div class="empty-state">&#x23F3; Caricamento oggetti...</div></div>
                 </div>
             </section>
 
