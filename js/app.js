@@ -70,6 +70,15 @@ class App {
                     this.userId = null;
                     localStorage.removeItem('questtracker_player');
                 }
+            } else if (this.player.username) {
+                try {
+                    const user = await SupaDB.ensureSession(this.player.username);
+                    this.userId = user.id;
+                    await this.refreshPlayerFromSupabase(user.id, this.player.username, this.player.playerClass);
+                    this.savePlayer();
+                } catch (err) {
+                    console.warn('[QuestTracker] Auto-login fallito, modalità locale:', err);
+                }
             }
             if (this.player) {
                 await this.loadQuests();
@@ -126,21 +135,7 @@ class App {
             const user = await SupaDB.ensureSession(username);
             this.userId = user.id;
             await SupaDB.updateProfile(this.userId, { username, player_class: playerClass });
-            const [profile, stats, resources] = await Promise.all([
-                SupaDB.getProfile(this.userId),
-                SupaDB.getStats(this.userId),
-                SupaDB.getResources(this.userId)
-            ]);
-            this.player = {
-                userId: this.userId, username: profile?.username || username,
-                playerClass: profile?.player_class || playerClass,
-                level: profile?.level || 1, currentXP: profile?.current_xp || 0,
-                totalXP: profile?.total_xp || 0, questsCompleted: 0,
-                totalDistance: stats?.total_distance || 0, totalElevation: stats?.total_elevation || 0,
-                totalTime: stats?.total_time || 0,
-                forza: stats?.forza || 0, agilita: stats?.agilita || 0, costituzione: stats?.costituzione || 0
-            };
-            this.fantasyResources = resources || { rupie: 100, cristalli: 0, punti_esplorazione: 0 };
+            await this.refreshPlayerFromSupabase(this.userId, username, playerClass);
             this.savePlayer();
             await this.loadQuests();
             this.showMainApp();
@@ -166,6 +161,24 @@ class App {
         this.savePlayer();
         this.saveJournal();
         this.showMainApp();
+    }
+
+    async refreshPlayerFromSupabase(userId, username, playerClass) {
+        const [profile, stats, resources] = await Promise.all([
+            SupaDB.getProfile(userId),
+            SupaDB.getStats(userId),
+            SupaDB.getResources(userId)
+        ]);
+        this.player = {
+            userId, username: profile?.username || username,
+            playerClass: profile?.player_class || playerClass,
+            level: profile?.level || 1, currentXP: profile?.current_xp || 0,
+            totalXP: profile?.total_xp || 0, questsCompleted: 0,
+            totalDistance: stats?.total_distance || 0, totalElevation: stats?.total_elevation || 0,
+            totalTime: stats?.total_time || 0,
+            forza: stats?.forza || 0, agilita: stats?.agilita || 0, costituzione: stats?.costituzione || 0
+        };
+        this.fantasyResources = resources || { rupie: 100, cristalli: 0, punti_esplorazione: 0 };
     }
 
     async loadQuests() {
