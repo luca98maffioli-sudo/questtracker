@@ -166,50 +166,73 @@ CREATE INDEX IF NOT EXISTS idx_journal_user ON player_journal(user_id);
 -- RLS POLICIES
 -- ============================================================================
 
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "profiles_select_own" ON profiles;
+DROP POLICY IF EXISTS "profiles_insert_own" ON profiles;
+DROP POLICY IF EXISTS "profiles_update_own" ON profiles;
 CREATE POLICY "profiles_select_own" ON profiles FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "profiles_update_own" ON profiles FOR UPDATE USING (auth.uid() = user_id);
 
-ALTER TABLE player_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS player_stats ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "stats_select_own" ON player_stats;
+DROP POLICY IF EXISTS "stats_update_own" ON player_stats;
 CREATE POLICY "stats_select_own" ON player_stats FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "stats_update_own" ON player_stats FOR UPDATE USING (auth.uid() = user_id);
 
-ALTER TABLE tracked_activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS tracked_activities ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "activities_select_own" ON tracked_activities;
+DROP POLICY IF EXISTS "activities_insert_own" ON tracked_activities;
 CREATE POLICY "activities_select_own" ON tracked_activities FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "activities_insert_own" ON tracked_activities FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-ALTER TABLE player_fantasy_resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS player_fantasy_resources ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "resources_select_own" ON player_fantasy_resources;
+DROP POLICY IF EXISTS "resources_insert_own" ON player_fantasy_resources;
+DROP POLICY IF EXISTS "resources_update_own" ON player_fantasy_resources;
 CREATE POLICY "resources_select_own" ON player_fantasy_resources FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "resources_insert_own" ON player_fantasy_resources FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "resources_update_own" ON player_fantasy_resources FOR UPDATE USING (auth.uid() = user_id);
 
-ALTER TABLE bridge_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS bridge_rules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "bridge_rules_read_all" ON bridge_rules;
 CREATE POLICY "bridge_rules_read_all" ON bridge_rules FOR SELECT TO authenticated USING (true);
 
-ALTER TABLE player_bridge_triggers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS player_bridge_triggers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "triggers_select_own" ON player_bridge_triggers;
+DROP POLICY IF EXISTS "triggers_insert_own" ON player_bridge_triggers;
 CREATE POLICY "triggers_select_own" ON player_bridge_triggers FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "triggers_insert_own" ON player_bridge_triggers FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-ALTER TABLE regions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS regions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "regions_read_all" ON regions;
 CREATE POLICY "regions_read_all" ON regions FOR SELECT TO anon, authenticated USING (true);
 
-ALTER TABLE quests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS quests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "quests_read_all" ON quests;
 CREATE POLICY "quests_read_all" ON quests FOR SELECT TO anon, authenticated USING (true);
 
-ALTER TABLE user_quest_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS user_quest_progress ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "progress_select_own" ON user_quest_progress;
+DROP POLICY IF EXISTS "progress_insert_own" ON user_quest_progress;
+DROP POLICY IF EXISTS "progress_update_own" ON user_quest_progress;
 CREATE POLICY "progress_select_own" ON user_quest_progress FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "progress_insert_own" ON user_quest_progress FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "progress_update_own" ON user_quest_progress FOR UPDATE USING (auth.uid() = user_id);
 
-ALTER TABLE fantasy_map_areas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS fantasy_map_areas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "areas_read_all" ON fantasy_map_areas;
 CREATE POLICY "areas_read_all" ON fantasy_map_areas FOR SELECT TO anon, authenticated USING (true);
 
-ALTER TABLE player_map_discoveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS player_map_discoveries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "discoveries_select_own" ON player_map_discoveries;
+DROP POLICY IF EXISTS "discoveries_insert_own" ON player_map_discoveries;
 CREATE POLICY "discoveries_select_own" ON player_map_discoveries FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "discoveries_insert_own" ON player_map_discoveries FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-ALTER TABLE player_journal ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS player_journal ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "journal_select_own" ON player_journal;
+DROP POLICY IF EXISTS "journal_insert_own" ON player_journal;
 CREATE POLICY "journal_select_own" ON player_journal FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "journal_insert_own" ON player_journal FOR INSERT WITH CHECK (auth.uid() = user_id);
 
