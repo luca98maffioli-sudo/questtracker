@@ -19,16 +19,30 @@ class FantasyMap {
     }
 
     async loadData() {
-        this.areas = FANTASY_AREAS;
-
         if (this.app.userId) {
             try {
                 const { data: dbAreas } = await SupaDB.supa
                     .from('fantasy_map_areas')
-                    .select('*')
-                    .eq('is_active', true);
+                    .select('*');
                 if (dbAreas && dbAreas.length > 0) {
-                    this.areas = dbAreas;
+                    this.areas = dbAreas.map(a => ({
+                        id: a.id,
+                        name: a.name,
+                        description: a.description,
+                        lore_text: a.lore,
+                        area_type: a.is_boss ? 'boss' : 'wilderness',
+                        emoji: a.emoji,
+                        pos_x: (a.grid_x / this.gridCols) * 100,
+                        pos_y: (a.grid_y / this.gridRows) * 100,
+                        size_x: (a.grid_w / this.gridCols) * 100,
+                        size_y: (a.grid_h / this.gridRows) * 100,
+                        exploration_cost: a.required_punti_esplorazione,
+                        required_forza: a.required_stats?.forza || 0,
+                        required_agilita: a.required_stats?.agilita || 0,
+                        required_costituzione: a.required_stats?.costituzione || 0,
+                        rupie_reward: a.reward_rupie,
+                        cristalli_reward: a.reward_cristalli
+                    }));
                 }
 
                 const { data: disc } = await SupaDB.supa
@@ -38,14 +52,19 @@ class FantasyMap {
                 if (disc) {
                     this.discoveries = disc.map(d => d.area_id);
                 }
-            } catch (_) {}
+            } catch (e) {
+                console.warn('[FantasyMap] Errore caricamento da Supabase:', e);
+            }
 
-            // Load saved discoveries from localStorage fallback
             const saved = localStorage.getItem('questtracker_discoveries');
             if (saved) {
                 const parsed = JSON.parse(saved);
                 this.discoveries = [...new Set([...this.discoveries, ...parsed])];
             }
+        }
+
+        if (!this.areas || this.areas.length === 0) {
+            this.areas = FANTASY_AREAS;
         }
     }
 
@@ -92,16 +111,8 @@ class FantasyMap {
             marker.style.left = `${area.pos_x}%`;
             marker.style.top = `${area.pos_y}%`;
 
-            const iconMap = {
-                wilderness: '\u{1F333}',
-                dungeon: '\u{1F3DB}\u{FE0F}',
-                boss: '\u{1F409}',
-                town: '\u{1F3E0}',
-                landmark: '\u{1F3D4}\u{FE0F}'
-            };
-
             marker.innerHTML = `
-                <div class="marker-icon">${iconMap[area.area_type] || '\u{2753}'}</div>
+                <div class="marker-icon">${area.emoji || '\u{2753}'}</div>
                 <div class="marker-tooltip">
                     <div class="marker-name">${area.name}</div>
                     <div class="marker-desc">${area.description || ''}</div>
@@ -259,49 +270,49 @@ const FANTASY_AREAS = [
     {
         id: 'fa-villaggio', name: 'Villaggio dell\'Alba', description: 'L\'ultimo avamposto prima delle terre selvagge.',
         lore_text: 'Un villaggio accogliente dove gli eroi possono riposare e scambiare storie.',
-        area_type: 'town', pos_x: 15, pos_y: 15, size_x: 12, size_y: 10,
+        area_type: 'town', emoji: '\u{1F3E0}', pos_x: 15, pos_y: 15, size_x: 12, size_y: 10,
         exploration_cost: 0, required_forza: 0, required_agilita: 0, required_costituzione: 0,
         rupie_reward: 10, cristalli_reward: 0
     },
     {
         id: 'fa-foresta', name: 'Foresta dei Sussurri', description: 'Alberi antichi che mormorano segreti.',
         lore_text: 'Si dice che chi cammina tra questi alberi senta le voci degli antichi guardiani.',
-        area_type: 'wilderness', pos_x: 20, pos_y: 25, size_x: 18, size_y: 15,
+        area_type: 'wilderness', emoji: '\u{1F333}', pos_x: 20, pos_y: 25, size_x: 18, size_y: 15,
         exploration_cost: 5, required_forza: 0, required_agilita: 0, required_costituzione: 0,
         rupie_reward: 15, cristalli_reward: 0
     },
     {
         id: 'fa-gola', name: 'Gola del Tuono', description: 'Un canyon squarciato nella roccia.',
         lore_text: 'Il vento produce un rombo che echeggia per miglia. Parlano di Cristalli nascosti.',
-        area_type: 'wilderness', pos_x: 45, pos_y: 20, size_x: 15, size_y: 12,
+        area_type: 'wilderness', emoji: '\u{1F5FB}', pos_x: 45, pos_y: 20, size_x: 15, size_y: 12,
         exploration_cost: 15, required_forza: 3, required_agilita: 0, required_costituzione: 0,
         rupie_reward: 30, cristalli_reward: 1
     },
     {
         id: 'fa-lago', name: 'Lago delle Laure', description: 'Acque cristalline al centro del mondo.',
         lore_text: 'Le acque riflettono non il cielo ma i desideri di chi vi si specchia.',
-        area_type: 'landmark', pos_x: 35, pos_y: 45, size_x: 12, size_y: 10,
+        area_type: 'landmark', emoji: '\u{1F30A}', pos_x: 35, pos_y: 45, size_x: 12, size_y: 10,
         exploration_cost: 8, required_forza: 0, required_agilita: 0, required_costituzione: 0,
         rupie_reward: 20, cristalli_reward: 0
     },
     {
         id: 'fa-rovine', name: 'Rovine Antiche', description: 'Resti di una civiltà dimenticata.',
         lore_text: 'Simboli incisi su pietre che non appartengono a nessuna lingua conosciuta.',
-        area_type: 'dungeon', pos_x: 60, pos_y: 55, size_x: 14, size_y: 12,
+        area_type: 'dungeon', emoji: '\u{1F3DB}\u{FE0F}', pos_x: 60, pos_y: 55, size_x: 14, size_y: 12,
         exploration_cost: 25, required_forza: 5, required_agilita: 3, required_costituzione: 2,
         rupie_reward: 80, cristalli_reward: 2
     },
     {
         id: 'fa-tempio', name: 'Tempio del Guardiano', description: 'Protetto da un antico guardiano di pietra.',
         lore_text: 'La statua del Guardiano sbarra lingresso. "Solo chi ha superato la prova della montagna può passare."',
-        area_type: 'dungeon', pos_x: 25, pos_y: 65, size_x: 13, size_y: 11,
+        area_type: 'dungeon', emoji: '\u{1F3DB}\u{FE0F}', pos_x: 25, pos_y: 65, size_x: 13, size_y: 11,
         exploration_cost: 20, required_forza: 8, required_agilita: 0, required_costituzione: 4,
         rupie_reward: 60, cristalli_reward: 1
     },
     {
         id: 'fa-vetta', name: 'Vetta del Drago', description: 'La montagna più alta. Un drago custodisce il Cristallo Eterno.',
         lore_text: 'Nessuno è mai tornato dalla Vetta. Il drago non dorme mai.',
-        area_type: 'boss', pos_x: 70, pos_y: 30, size_x: 16, size_y: 14,
+        area_type: 'boss', emoji: '\u26F0\uFE0F', pos_x: 70, pos_y: 30, size_x: 16, size_y: 14,
         exploration_cost: 50, required_forza: 15, required_agilita: 8, required_costituzione: 10,
         rupie_reward: 200, cristalli_reward: 5
     }
