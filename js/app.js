@@ -277,6 +277,7 @@ class App {
         if (screen === 'map') setTimeout(() => this.map?.invalidateSize(), 100);
         if (screen === 'fantasy') this.initFantasyMap();
         if (screen === 'guild') this.renderGuild();
+        if (screen === 'diary') this.renderDiary();
     }
 
     initFantasyMap() {
@@ -327,6 +328,8 @@ class App {
 
         this.renderJournal();
         this.renderCombatCard();
+        this.renderInventory();
+        this.renderTitles();
     }
 
     renderJournal() {
@@ -395,6 +398,136 @@ class App {
                 if (m) this.combatEngine.openEncounter(m);
             });
         });
+    }
+
+    renderInventory() {
+        const items = this.playerItems || [];
+        const catalog = this.itemsCatalog || [];
+
+        // Equipped slots
+        const equipped = {};
+        items.forEach(pi => {
+            if (pi.equipped && pi.items_catalog) {
+                equipped[pi.items_catalog.slot_type] = { ...pi.items_catalog, player_item_id: pi.id };
+            }
+        });
+        const slotMap = { tool: 'slotTool', footwear: 'slotFootwear', amulet: 'slotAmulet' };
+        Object.entries(slotMap).forEach(([slot, id]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (equipped[slot]) {
+                const item = equipped[slot];
+                el.innerHTML = `${item.icon || item.emoji || ''} ${item.name} <button class="btn-unequip-sm" data-item-id="${item.id}">❌</button>`;
+            } else {
+                el.innerHTML = '—';
+            }
+        });
+        document.querySelectorAll('.btn-unequip-sm').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                await this.handleUnequipItem(btn.dataset.itemId);
+            });
+        });
+
+        // Owned items (not equipped)
+        const owned = items.filter(pi => !pi.equipped);
+        document.getElementById('ownedCount').textContent = owned.length;
+        const ownedList = document.getElementById('ownedItemsList');
+        if (owned.length === 0) {
+            ownedList.innerHTML = '<div class="empty-state">Nessun oggetto nello zaino.</div>';
+            return;
+        }
+        ownedList.innerHTML = owned.map(pi => {
+            const c = pi.items_catalog;
+            if (!c) return '';
+            return `<div class="inv-owned-item">
+                <span class="inv-owned-icon">${c.icon || c.emoji || '📦'}</span>
+                <span class="inv-owned-name">${c.name}</span>
+                <span class="inv-owned-slot">${c.slot_type || 'generico'}</span>
+                <button class="btn-equip-sm" data-item-id="${c.id}">🎒 Equip.</button>
+            </div>`;
+        }).join('');
+        ownedList.querySelectorAll('.btn-equip-sm').forEach(btn => {
+            btn.addEventListener('click', () => this.handleEquipItem(btn.dataset.itemId));
+        });
+    }
+
+    async handleUnequipItem(itemId) {
+        if (!this.userId) return;
+        try {
+            await SupaDB.unequipItem(this.userId, itemId);
+            this.playerItems = await SupaDB.getPlayerItems(this.userId);
+            this.renderInventory();
+            this.updateHero();
+        } catch (err) {
+            console.warn('[QuestTracker] Unequip error:', err);
+        }
+    }
+
+    renderTitles() {
+        const list = document.getElementById('titlesList');
+        if (!list) return;
+        const all = this.titlesCatalog || [];
+        const earned = this.playerTitles || [];
+        const earnedIds = new Set(earned.map(pt => pt.title_id));
+        if (all.length === 0) {
+            list.innerHTML = '<div class="empty-state">Nessun titolo disponibile.</div>';
+            return;
+        }
+        list.innerHTML = all.map(t => {
+            const has = earnedIds.has(t.id);
+            return `<div class="title-item ${has ? 'earned' : 'locked'}">
+                <span class="title-icon">${t.icon || '🏅'}</span>
+                <span class="title-info">
+                    <span class="title-name">${t.name}</span>
+                    <span class="title-desc">${t.description || ''}</span>
+                </span>
+                <span class="title-status">${has ? '✅' : '🔒'}</span>
+            </div>`;
+        }).join('');
+    }
+
+    renderDiary() {
+        // Journal entries
+        const entryList = document.getElementById('diaryEntryList');
+        if (entryList) {
+            const entries = this.journal.slice().reverse();
+            if (entries.length === 0) {
+                entryList.innerHTML = '<div class="empty-state">Nessuna voce nel diario. Inizia la tua avventura!</div>';
+            } else {
+                entryList.innerHTML = entries.map(e => {
+                    const d = new Date(e.ts);
+                    const dateStr = d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+                    return `<div class="diary-entry ${e.type || 'system'}">
+                        <div class="diary-date">${dateStr}</div>
+                        <div class="diary-body">
+                            <div class="diary-entry-title">${e.title}</div>
+                            ${e.desc ? `<div class="diary-entry-desc">${e.desc}</div>` : ''}
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+        }
+
+        // Lore chapters
+        const loreList = document.getElementById('diaryLoreList');
+        if (!loreList) return;
+        const completedAreas = (this.areaProgress || []).filter(a => a.is_completed);
+        const loreQuests = (this.quests || []).filter(q => q.quest_type === 'grande_avventura' && q.lore);
+        if (completedAreas.length === 0 && loreQuests.length === 0) {
+            loreList.innerHTML = '<div class="empty-state">Completa la Grande Avventura per sbloccare i capitoli della storia.</div>';
+            return;
+        }
+        loreList.innerHTML = loreQuests.map(q => {
+            const areaDone = q.area_id && completedAreas.some(a => a.area_id === q.area_id);
+            return `<div class="diary-lore-chapter ${areaDone ? 'unlocked' : 'locked'}">
+                <div class="lore-chapter-icon">${areaDone ? '📖' : '🔒'}</div>
+                <div class="lore-chapter-info">
+                    <div class="lore-chapter-title">${q.title}</div>
+                    ${areaDone ? `<div class="lore-chapter-text">${q.lore}</div>` : '<div class="lore-chapter-text locked-text">Capitolo da sbloccare...</div>'}
+                </div>
+            </div>`;
+        }).join('');
     }
 
     renderQuests(filter = 'all') {
@@ -649,6 +782,9 @@ class App {
             this.titlesCatalog = await SupaDB.getTitles();
             this.playerItems = await SupaDB.getPlayerItems(this.userId);
             this.playerTitles = await SupaDB.getPlayerTitles(this.userId);
+            // Check titles on init (catches any that were earned offline)
+            await SupaDB.checkTitles(this.userId);
+            this.playerTitles = await SupaDB.getPlayerTitles(this.userId);
         } catch (err) {
             console.warn('[QuestTracker] Guild init error:', err);
             this.activeQuests = [];
@@ -844,6 +980,8 @@ class App {
             await SupaDB.equipItem(this.userId, itemId);
             this.playerItems = await SupaDB.getPlayerItems(this.userId);
             this.renderMerchant();
+            this.renderInventory();
+            this.updateHero();
         } catch (err) {
             console.warn('[QuestTracker] Equip error:', err);
             alert('Errore durante l\'equipaggiamento.');

@@ -41,7 +41,11 @@ class FantasyMap {
                         required_agilita: a.required_stats?.agilita || 0,
                         required_costituzione: a.required_stats?.costituzione || 0,
                         rupie_reward: a.reward_rupie,
-                        cristalli_reward: a.reward_cristalli
+                        cristalli_reward: a.reward_cristalli,
+                        is_starting_area: a.is_starting_area,
+                        unlock_order: a.unlock_order,
+                        required_quests_completed: a.required_quests_completed,
+                        boss_quest_id: a.boss_quest_id
                     }));
                 }
 
@@ -98,42 +102,66 @@ class FantasyMap {
 
         mapEl.appendChild(grid);
 
+        // Build progression lock map: area_id -> is_unlocked_by_progression
+        const areaProgress = this.app.areaProgress || [];
+        const progMap = {};
+        areaProgress.forEach(ap => { progMap[ap.area_id] = ap; });
+
         // Markers layer
         const markersLayer = document.createElement('div');
         markersLayer.className = 'fantasy-markers';
 
         this.markers = [];
         this.areas.forEach(area => {
+            const prog = progMap[area.id];
+            const areaUnlocked = prog?.is_unlocked === true;
             const discovered = this.discoveries.includes(area.id);
 
+            let visibility = 'locked';
+            if (!areaUnlocked) visibility = 'locked';
+            else if (discovered) visibility = 'revealed';
+            else visibility = 'hidden';
+
             const marker = document.createElement('div');
-            marker.className = `map-marker ${discovered ? 'revealed' : 'hidden'}`;
+            marker.className = `map-marker ${visibility}`;
             marker.style.left = `${area.pos_x}%`;
             marker.style.top = `${area.pos_y}%`;
 
-            marker.innerHTML = `
-                <div class="marker-icon">${area.emoji || '\u{2753}'}</div>
-                <div class="marker-tooltip">
-                    <div class="marker-name">${area.name}</div>
+            let tooltipHtml = '';
+            if (!areaUnlocked) {
+                tooltipHtml = `
+                    <div class="marker-name">🔒 ???</div>
+                    <div class="marker-desc">Completa la Grande Avventura dell'area precedente per sbloccare.</div>
+                `;
+            } else if (!discovered) {
+                tooltipHtml = `
+                    <div class="marker-name">${area.emoji || '❓'} ${area.name}</div>
                     <div class="marker-desc">${area.description || ''}</div>
-                    ${!discovered ? `
-                        <div class="marker-cost">
-                            <span>\u{1F5FA}\u{FE0F} ${area.exploration_cost} PE</span>
-                            ${area.required_forza > 0 ? `<span>\u{1F4AA} ${area.required_forza}</span>` : ''}
-                            ${area.required_agilita > 0 ? `<span>\u{1F3C3} ${area.required_agilita}</span>` : ''}
-                        </div>
-                        <button class="btn-reveal" data-area-id="${area.id}">\u{1F50D} Rivela</button>
-                    ` : `
-                        <div class="marker-reward">
-                            ${area.rupie_reward > 0 ? `\u{1FA99}+${area.rupie_reward}` : ''}
-                            ${area.cristalli_reward > 0 ? ` \u{1F48E}+${area.cristalli_reward}` : ''}
-                        </div>
-                        ${area.lore_text ? `<div class="marker-lore">"${area.lore_text}"</div>` : ''}
-                    `}
-                </div>
+                    <div class="marker-cost">
+                        <span>🗺️ ${area.exploration_cost} PE</span>
+                        ${area.required_forza > 0 ? `<span>💪 ${area.required_forza}</span>` : ''}
+                        ${area.required_agilita > 0 ? `<span>🏃 ${area.required_agilita}</span>` : ''}
+                    </div>
+                    <button class="btn-reveal" data-area-id="${area.id}">🔍 Rivela</button>
+                `;
+            } else {
+                tooltipHtml = `
+                    <div class="marker-name">${area.emoji || ''} ${area.name}</div>
+                    <div class="marker-desc">${area.description || ''}</div>
+                    <div class="marker-reward">
+                        ${area.rupie_reward > 0 ? `🪙+${area.rupie_reward}` : ''}
+                        ${area.cristalli_reward > 0 ? ` 💎+${area.cristalli_reward}` : ''}
+                    </div>
+                    ${area.lore_text ? `<div class="marker-lore">"${area.lore_text}"</div>` : ''}
+                `;
+            }
+
+            marker.innerHTML = `
+                <div class="marker-icon">${!areaUnlocked ? '🔒' : (discovered ? (area.emoji || '📍') : '❓')}</div>
+                <div class="marker-tooltip">${tooltipHtml}</div>
             `;
 
-            if (!discovered) {
+            if (areaUnlocked && !discovered) {
                 const btn = marker.querySelector('.btn-reveal');
                 if (btn) {
                     btn.addEventListener('click', (e) => {
@@ -144,7 +172,7 @@ class FantasyMap {
             }
 
             markersLayer.appendChild(marker);
-            this.markers.push({ el: marker, area, discovered });
+            this.markers.push({ el: marker, area, discovered, areaUnlocked });
         });
 
         mapEl.appendChild(markersLayer);
@@ -153,12 +181,12 @@ class FantasyMap {
         const legend = document.createElement('div');
         legend.className = 'fantasy-legend';
         legend.innerHTML = `
-            <div class="legend-title">\u{1F9ED} Leggenda</div>
-            <div class="legend-row"><span>\u{1F333}</span> Terra Selvaggia</div>
-            <div class="legend-row"><span>\u{1F3DB}\u{FE0F}</span> Dungeon</div>
-            <div class="legend-row"><span>\u{1F409}</span> Boss</div>
-            <div class="legend-row"><span>\u{1F3E0}</span> Villaggio</div>
-            <div class="legend-row"><span>\u{1F3D4}\u{FE0F}</span> Punto di Riferimento</div>
+            <div class="legend-title">🧭 Leggenda</div>
+            <div class="legend-row"><span>🌳</span> Terra Selvaggia</div>
+            <div class="legend-row"><span>🏛️</span> Dungeon</div>
+            <div class="legend-row"><span>🐉</span> Boss</div>
+            <div class="legend-row"><span>🏠</span> Villaggio</div>
+            <div class="legend-row"><span>🏔️</span> Punto di Riferimento</div>
         `;
         mapEl.appendChild(legend);
 
@@ -167,12 +195,18 @@ class FantasyMap {
     }
 
     updateFog() {
+        const areaProgress = this.app.areaProgress || [];
+        const progMap = {};
+        areaProgress.forEach(ap => { progMap[ap.area_id] = ap; });
+
         this.cells.forEach(cell => {
             const { el, row, col } = cell;
             const cx = (col + 0.5) / this.gridCols * 100;
             const cy = (row + 0.5) / this.gridRows * 100;
 
             const nearRevealed = this.areas.some(area => {
+                const prog = progMap[area.id];
+                if (!prog?.is_unlocked) return false;
                 if (!this.discoveries.includes(area.id)) return false;
                 const dx = cx - area.pos_x;
                 const dy = cy - area.pos_y;
@@ -183,7 +217,11 @@ class FantasyMap {
         });
 
         this.markers.forEach(m => {
-            m.el.className = `map-marker ${this.discoveries.includes(m.area.id) ? 'revealed' : 'hidden'}`;
+            let visibility = 'locked';
+            if (!m.areaUnlocked) visibility = 'locked';
+            else if (this.discoveries.includes(m.area.id)) visibility = 'revealed';
+            else visibility = 'hidden';
+            m.el.className = `map-marker ${visibility}`;
         });
     }
 

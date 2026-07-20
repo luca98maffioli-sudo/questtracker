@@ -54,6 +54,7 @@
             <button class="nav-tab" data-screen="quests">&#x1F4DC; Quest</button>
             <button class="nav-tab" data-screen="fantasy">&#x1F3DE;&#65039; Mondo F.</button>
             <button class="nav-tab" data-screen="map">&#x1F5FA;&#65039; Mappa</button>
+            <button class="nav-tab" data-screen="diary">&#x1F4D6; Diario</button>
         </nav>
 
         <main class="container">
@@ -117,6 +118,22 @@
                         <div class="res-divider"></div>
                         <div class="res-item"><span class="res-icon">&#x1F5FA;&#65039;</span><span class="res-val" id="resEsplorazione">0</span><span class="res-label">P. Esplorazione</span></div>
                     </div>
+                </div>
+                <div class="hero-card" id="inventoryCard">
+                    <div class="hero-card-title">&#x1F9F0; Inventario</div>
+                    <div class="inventory-slots" id="equippedSlots">
+                        <div class="inv-slot" data-slot="tool"><span class="inv-slot-icon">&#x1F9F0;</span><span class="inv-slot-label">Attrezzo</span><span class="inv-slot-item" id="slotTool">—</span></div>
+                        <div class="inv-slot" data-slot="footwear"><span class="inv-slot-icon">&#x1F45F;</span><span class="inv-slot-label">Calzatura</span><span class="inv-slot-item" id="slotFootwear">—</span></div>
+                        <div class="inv-slot" data-slot="amulet"><span class="inv-slot-icon">&#x1F48D;</span><span class="inv-slot-label">Amuleto</span><span class="inv-slot-item" id="slotAmulet">—</span></div>
+                    </div>
+                    <div class="inventory-owned">
+                        <div class="inv-owned-title">&#x1F4E6; Zaino (<span id="ownedCount">0</span>)</div>
+                        <div id="ownedItemsList"><div class="empty-state">Nessun oggetto nello zaino.</div></div>
+                    </div>
+                </div>
+                <div class="hero-card" id="titlesCard">
+                    <div class="hero-card-title">&#x1F3C5; Titoli</div>
+                    <div id="titlesList"><div class="empty-state">&#x23F3; Caricamento titoli...</div></div>
                 </div>
                 <div class="hero-card" id="combatCard">
                     <div class="hero-card-title">&#x2694;&#xFE0F; Sfide</div>
@@ -190,6 +207,18 @@
             <!-- Mappa Reale -->
             <section class="screen" id="mapScreen">
                 <div id="map"></div>
+            </section>
+
+            <!-- Diario -->
+            <section class="screen" id="diaryScreen">
+                <div class="diary-section">
+                    <div class="diary-section-title">&#x1F4DC; Cronache</div>
+                    <div class="diary-list" id="diaryEntryList"><div class="empty-state">Nessuna voce nel diario. Inizia la tua avventura!</div></div>
+                </div>
+                <div class="diary-section">
+                    <div class="diary-section-title">&#x1F4D6; Lore della Grande Avventura</div>
+                    <div id="diaryLoreList"><div class="empty-state">Completa la Grande Avventura per sbloccare i capitoli della storia.</div></div>
+                </div>
             </section>
         </main>
     </div>
