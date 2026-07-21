@@ -3,6 +3,123 @@ const CLASS_AVATARS = {
     'Biker': '\u{1F6B5}', 'Nomade': '\u{1F30D}'
 };
 
+// Dialoghi NPC ricorrenti che evolvono con livello / quest / progresso.
+// Per ogni NPC, l'array contiene soglie in ordine di priorità (la prima
+// corrispondente vince). minLevel / minQuests / minForza / minAgilita /
+// minCostituzione / hasBossUnlocked / hasAreaCompleted sono opzionali.
+const NPC_DIALOGUES = {
+    saggio: [
+        {
+            text: '"Sei diventato un vero eroe! Il mondo reale e quello fantasy sono più connessi di quanto immagini."',
+            minLevel: 8
+        },
+        {
+            text: '"La Gilda ha sentito parlare di te. Forse è il momento di farti vedere da loro."',
+            minLevel: 5, minForza: 3
+        },
+        {
+            text: '"Continua così! Ogni passo nel mondo reale rafforza il tuo spirito qui."',
+            minQuests: 3
+        },
+        {
+            text: '"Le statistiche che accumuli nel mondo reale — distanza, dislivello, tempo — si riflettono nelle tue abilità. Forza, Agilità, Costituzione: tutto è collegato."',
+            minLevel: 3
+        },
+        {
+            text: '"Benvenuto, giovane avventuriero. Il mondo là fuori è pieno di meraviglie. Inizia con una quest e il cammino si svelerà."'
+        }
+    ],
+    capo_gilda: [
+        {
+            text: '"Hai completato la Grande Avventura di quest\'area! Preparati: la prossima ti aspetta, e sarà ancora più impegnativa."',
+            hasAreaCompleted: true
+        },
+        {
+            text: '"La Grande Avventura è pronta per te! Accettala dalla Bacheca e dimostra il tuo valore. Il boss non aspetta."',
+            hasBossUnlocked: true
+        },
+        {
+            text: '"Le tue gesta iniziano a farsi sentire in tutto il regno. Continua a completare quest: la Grande Avventura si sta preparando."',
+            minLevel: 5, minQuests: 5
+        },
+        {
+            text: '"Buon lavoro. Tieni d\'occhio la Bacheca: nuove quest arrivano regolarmente e il progresso nell\'area corrente è la chiave per sbloccare sfide maggiori."',
+            minLevel: 3, minQuests: 2
+        },
+        {
+            text: '"Benvenuto in Gilda, avventuriero. Qui troverai la Bacheca con le quest disponibili e il Mercante per rifornirti. Scegli con saggezza: puoi accettare solo 2 quest alla volta."'
+        }
+    ],
+    mercante: [
+        {
+            text: '"Grazie alla tua fedeltà, ho ricevuto merce rara! Dai un\'occhiata: potrebbe esserci qualcosa che fa al caso tuo."',
+            minLevel: 7, minQuests: 10
+        },
+        {
+            text: '"Ottimi acquisti! Torni spesso, vedo. Ho qualcosa di speciale in serbo per chi sa apprezzare la qualità."',
+            hasPurchased: true, minLevel: 4
+        },
+        {
+            text: '"Vedo che hai già del buon equipaggiamento. Se vuoi potenziarti, qui trovi quello che cerchi."',
+            hasEquipped: true
+        },
+        {
+            text: '"Bentornato! Ho ricevuto nuova merce. Prenditi il tuo tempo per guardare."',
+            hasPurchased: true
+        },
+        {
+            text: '"Dai un\'occhiata alla mia merce! Ho di tutto: attrezzi, calzature, amuleti. Tutto quello che serve a un avventuriero."'
+        }
+    ]
+};
+
+// Testi delle spiegazioni richiamate dai pulsanti ⓘ sparsi nell'interfaccia.
+const INFO_CONTENT = {
+    economy: {
+        icon: '\u{1F4B0}',
+        title: 'Il Borsellino',
+        html: `
+            <p>\u{1FA99} <b>Rupie</b> \u2014 la valuta base. Si guadagnano completando quest, superando alcune soglie di distanza/dislivello durante le attivit\u00e0, e vincendo combattimenti. Si spendono dal Mercante per comprare oggetti.</p>
+            <p>\u{1F48E} <b>Cristalli</b> \u2014 valuta rara. Si ottengono solo da imprese impegnative (dislivello alto, boss, mostri forti). Servono per gli oggetti pi\u00f9 pregiati.</p>
+            <p>\u{1F5FA}\u{FE0F} <b>Punti Esplorazione</b> \u2014 si accumulano restando in movimento a lungo (attivit\u00e0 di almeno 90 minuti). Servono per rivelare nuove aree sulla Mappa Fantasy.</p>
+        `
+    },
+    'guild-slots': {
+        icon: '\u2694\uFE0F',
+        title: 'Quest Attive',
+        html: `
+            <p>Puoi tenere al massimo <b>2 quest normali attive</b> contemporaneamente. Completane una (facendo l'attivit\u00e0 richiesta nel mondo reale) prima di accettarne un'altra dalla Bacheca.</p>
+            <p>La <b>Grande Avventura</b> (quest della storia principale) non conta nel limite di 2: si sblocca separatamente quando completi abbastanza quest normali nell'area corrente.</p>
+        `
+    },
+    merchant: {
+        icon: '\u{1F6CD}',
+        title: 'Il Mercante',
+        html: `
+            <p>Ogni oggetto ha uno <b>slot</b> (Attrezzo, Calzatura, Amuleto). Puoi possederne quanti vuoi, ma equipaggiarne solo <b>uno per slot</b> alla volta.</p>
+            <p>Gli oggetti danno un <b>bonus concreto</b> (es. pi\u00f9 XP dalle quest, meno fatica in MTB, ecc.) mostrato sotto ogni oggetto \u2014 non sono solo collezionabili.</p>
+            <p>Per comprare serve avere abbastanza Rupie e/o Cristalli richiesti; l'oggetto resta nello zaino finch\u00e9 non lo equipaggi dalla schermata Eroe o da qui.</p>
+        `
+    }
+};
+
+// Etichette leggibili per l'effect_type degli oggetti (items_catalog).
+function formatItemEffect(item) {
+    if (!item || !item.effect_type) return '';
+    const v = item.effect_value;
+    const labels = {
+        xp_bonus: `+${v}% XP dalle quest`,
+        elevation_reduction: `-${v}% dislivello richiesto in validazione`,
+        area_unlock: `Sblocca un'area senza requisiti`,
+        speed_bonus: `+${v}% velocit\u00e0 massima consentita`,
+        mtb_endurance: `-${v}% fatica su lunghe distanze MTB`,
+        stat_bonus: `+${v} Costituzione a fine Grande Avventura`,
+        temp_stat: `+${v} Forza temporanea (prossima uscita)`,
+        waypoint_save: `Salva un punto di ritorno GPS`
+    };
+    return labels[item.effect_type] || `Effetto: ${item.effect_type} (${v})`;
+}
+
 class App {
     constructor() {
         this.currentQuest = null;
@@ -106,11 +223,26 @@ class App {
         document.getElementById('modalCloseBtn').addEventListener('click', () => {
             document.getElementById('completionModal').classList.remove('active');
         });
+        document.getElementById('infoModalCloseBtn').addEventListener('click', () => {
+            document.getElementById('infoModal').classList.remove('active');
+        });
+        document.querySelectorAll('.info-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showInfoModal(btn.dataset.info);
+            });
+        });
         document.getElementById('combatAttackBtn').addEventListener('click', () => {
             this.combatEngine?.resolveCombat();
         });
         document.getElementById('combatCloseBtn').addEventListener('click', () => {
             this.combatEngine?.closeCombat();
+        });
+        document.getElementById('freeExpWalkBtn').addEventListener('click', () => {
+            this.beginFreeExploration('trekking');
+        });
+        document.getElementById('freeExpBikeBtn').addEventListener('click', () => {
+            this.beginFreeExploration('mtb');
         });
     }
 
@@ -263,7 +395,10 @@ class App {
     showMainApp() {
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('mainApp').classList.remove('hidden');
-        if (!this.combatEngine) this.combatEngine = new CombatEngine(this);
+        if (!this.combatEngine) {
+            this.combatEngine = new CombatEngine(this);
+            this.combatEngine.loadMonsters();
+        }
         this.updateHero();
         this.renderQuests();
         this.initMap();
@@ -283,6 +418,70 @@ class App {
     initFantasyMap() {
         if (!this.fantasyMap) this.fantasyMap = new FantasyMap(this);
         this.fantasyMap.init();
+    }
+
+    showInfoModal(topic) {
+        const info = INFO_CONTENT[topic];
+        if (!info) return;
+        document.getElementById('infoModalIcon').textContent = info.icon || '\u{1F4D6}';
+        document.getElementById('infoModalTitle').textContent = info.title || 'Info';
+        document.getElementById('infoModalText').innerHTML = info.html || '';
+        document.getElementById('infoModal').classList.add('active');
+    }
+
+    updateNpcDialogues() {
+        const p = this.player;
+        if (!p) return;
+
+        const areaProgress = this.areaProgress || [];
+        const hasBossUnlocked = areaProgress.some(a => a.is_boss_unlocked && !a.is_completed);
+        const hasAreaCompleted = areaProgress.some(a => a.is_completed);
+        const hasPurchased = (this.playerItems || []).length > 0;
+        const hasEquipped = (this.playerItems || []).some(pi => pi.equipped);
+
+        const stats = {
+            minLevel: p.level,
+            minQuests: p.questsCompleted,
+            minForza: p.forza || 0,
+            minAgilita: p.agilita || 0,
+            minCostituzione: p.costituzione || 0,
+            hasBossUnlocked,
+            hasAreaCompleted,
+            hasPurchased,
+            hasEquipped
+        };
+
+        const npcIds = ['saggio', 'capo_gilda', 'mercante'];
+        npcIds.forEach(npcId => {
+            const elId = npcId === 'capo_gilda' ? 'capoGildaDialogueText' :
+                         npcId === 'mercante' ? 'mercanteDialogueText' :
+                         'saggioDialogueText';
+            const el = document.getElementById(elId);
+            if (!el) return;
+
+            const dialogues = NPC_DIALOGUES[npcId];
+            if (!dialogues) return;
+
+            // Sceglie la prima soglia che matcha (dall'alto: più
+            // specifica alla meno specifica) in base allo stato corrente.
+            const match = dialogues.find(d => {
+                // Se ha una condizione non soddisfatta, salta
+                if (d.minLevel && p.level < d.minLevel) return false;
+                if (d.minQuests && p.questsCompleted < d.minQuests) return false;
+                if (d.minForza && (p.forza || 0) < d.minForza) return false;
+                if (d.minAgilita && (p.agilita || 0) < d.minAgilita) return false;
+                if (d.minCostituzione && (p.costituzione || 0) < d.minCostituzione) return false;
+                if (d.hasBossUnlocked === true && !hasBossUnlocked) return false;
+                if (d.hasAreaCompleted === true && !hasAreaCompleted) return false;
+                if (d.hasPurchased === true && !hasPurchased) return false;
+                if (d.hasEquipped === true && !hasEquipped) return false;
+                return true;
+            });
+
+            if (match) {
+                el.textContent = match.text;
+            }
+        });
     }
 
     updateHero() {
@@ -330,6 +529,7 @@ class App {
         this.renderCombatCard();
         this.renderInventory();
         this.renderTitles();
+        this.updateNpcDialogues();
     }
 
     renderJournal() {
@@ -417,6 +617,7 @@ class App {
             if (!el) return;
             if (equipped[slot]) {
                 const item = equipped[slot];
+                el.title = formatItemEffect(item);
                 el.innerHTML = `${item.icon || item.emoji || ''} ${item.name} <button class="btn-unequip-sm" data-item-id="${item.id}">❌</button>`;
             } else {
                 el.innerHTML = '—';
@@ -445,6 +646,7 @@ class App {
                 <span class="inv-owned-name">${c.name}</span>
                 <span class="inv-owned-slot">${c.slot_type || 'generico'}</span>
                 <button class="btn-equip-sm" data-item-id="${c.id}">🎒 Equip.</button>
+                <span class="inv-owned-effect">✨ ${formatItemEffect(c)}</span>
             </div>`;
         }).join('');
         ownedList.querySelectorAll('.btn-equip-sm').forEach(btn => {
@@ -572,6 +774,23 @@ class App {
         document.getElementById('questDetailOverlay').classList.add('active');
     }
 
+    beginFreeExploration(type) {
+        this.currentQuest = {
+            id: `free-${Date.now()}`,
+            title: type === 'mtb' ? 'Esplorazione MTB' : 'Esplorazione a Piedi',
+            type: type,
+            xpReward: 0,
+            distance: 0,
+            elevation: 0,
+            description: 'Percorso libero senza quest predefinita.',
+            coords: [[45.2850, 7.5620]],
+            region: '',
+            difficulty: 1,
+            isFreeExploration: true
+        };
+        this.beginTracking();
+    }
+
     beginTracking() {
         const quest = this.currentQuest;
         if (!quest) return;
@@ -697,9 +916,17 @@ class App {
     showCompletionModal(leveledUp, quest, bridgeResult) {
         const modal = document.getElementById('completionModal');
         modal.classList.add('active');
-        document.getElementById('modalIcon').textContent = leveledUp ? '\u{1F38A}' : '\u{1F389}';
-        document.getElementById('modalTitle').textContent = leveledUp ? 'LEVEL UP!' : 'QUEST COMPLETATA!';
-        let text = leveledUp ? `Sei salito al livello ${this.player.level}!` : `Hai guadagnato ${quest.xpReward} XP`;
+        const isFree = quest.isFreeExploration;
+        document.getElementById('modalIcon').textContent = leveledUp ? '\u{1F38A}' : (isFree ? '\u{1F9ED}' : '\u{1F389}');
+        document.getElementById('modalTitle').textContent = leveledUp ? 'LEVEL UP!' : (isFree ? 'ESPLORAZIONE COMPLETATA!' : 'QUEST COMPLETATA!');
+        let text;
+        if (isFree) {
+            text = 'Hai esplorato nuovi territori!';
+        } else if (leveledUp) {
+            text = `Sei salito al livello ${this.player.level}!`;
+        } else {
+            text = `Hai guadagnato ${quest.xpReward} XP`;
+        }
         const summary = BridgeEngine.getEffectsSummary(bridgeResult.effects);
         if (summary.length > 0) text += `<br><br><span style="font-size:13px;color:#e8b830;">${summary.join(' \u2022 ')}</span>`;
         document.getElementById('modalText').innerHTML = text;
@@ -747,7 +974,7 @@ class App {
         if (!this.userId) return;
         try {
             const activity = await SupaDB.saveActivity(
-                this.userId, quest.id.startsWith('hc-') ? null : quest.id,
+                this.userId, quest.id.startsWith('hc-') || quest.id.startsWith('free-') ? null : quest.id,
                 quest.type, stats, this.trackPoints
             );
             await SupaDB.saveQuestProgress(this.userId, quest.id, stats);
@@ -842,7 +1069,7 @@ class App {
             if (!q) return '';
             const isGA = q.quest_type === 'grande_avventura';
             return `<div class="guild-card ${isGA ? 'ga-quest' : ''}">
-                <div class="guild-card-title">${aq.quests_emoji || q.emoji || ''} ${q.title}</div>
+                <div class="guild-card-title">${q.emoji || ''} ${q.title}</div>
                 <div class="guild-card-meta">${q.difficulty || ''}${q.distance ? ' · ' + q.distance + 'km' : ''}${q.elevation ? ' · ' + q.elevation + 'm D+' : ''}</div>
                 <div class="guild-card-progress">${isGA ? '⚔️ Grande Avventura' : 'Completala con una attività'}</div>
             </div>`;
@@ -933,15 +1160,21 @@ class App {
         list.innerHTML = items.map(item => {
             const owned = ownedIds.has(item.id);
             const equipped = equippedIds.has(item.id);
-            const canAfford = (resources.rupie || 0) >= item.cost_rupie && (resources.cristalli || 0) >= item.cost_cristalli;
-            return `<div class="guild-card merchant-item ${owned ? 'owned' : ''}">
-                <div class="guild-card-title">${item.emoji || ''} ${item.name}</div>
+            const actualCost = item.is_on_sale && item.sale_price_rupie ? item.sale_price_rupie : item.cost_rupie;
+            const canAfford = (resources.rupie || 0) >= actualCost && (resources.cristalli || 0) >= item.cost_cristalli;
+            const priceLabel = item.is_on_sale
+                ? `<span style="text-decoration:line-through;color:var(--danger);">🪙 ${item.cost_rupie}</span> 🪙 ${item.sale_price_rupie}`
+                : `🪙 ${item.cost_rupie}`;
+            return `<div class="guild-card merchant-item ${owned ? 'owned' : ''} ${item.is_on_sale ? 'on-sale' : ''}">
+                ${item.is_on_sale ? '<div class="sale-badge">🏷️ IN OFFERTA</div>' : ''}
+                <div class="guild-card-title">${item.emoji || item.icon || ''} ${item.name}</div>
                 <div class="guild-card-desc">${item.description || ''}</div>
                 <div class="guild-card-meta">
-                    🪙 ${item.cost_rupie} Rupie ${item.cost_cristalli > 0 ? '💎 ' + item.cost_cristalli + ' Cristalli' : ''}
-                    · Slot: ${item.slot || 'generico'}
+                    ${priceLabel} ${item.cost_cristalli > 0 ? '💎 ' + item.cost_cristalli + ' Cristalli' : ''}
+                    · Slot: ${item.slot_type || 'generico'}
                 </div>
-                ${!owned ? `<button class="btn-buy" data-item-id="${item.id}" ${!canAfford ? 'disabled' : ''}>🛒 Compra (${item.cost_rupie}R)</button>` : ''}
+                <div class="item-effect">✨ ${formatItemEffect(item)}</div>
+                ${!owned ? `<button class="btn-buy" data-item-id="${item.id}" ${!canAfford ? 'disabled' : ''}>🛒 Compra (${actualCost}R)</button>` : ''}
                 ${owned && !equipped ? `<button class="btn-equip" data-item-id="${item.id}">🎒 Equipaggia</button>` : ''}
                 ${owned && equipped ? `<span class="badge-equipped">✅ Equipaggiato</span>` : ''}
             </div>`;
@@ -967,6 +1200,7 @@ class App {
             await this.refreshFantasyResources();
             this.playerItems = await SupaDB.getPlayerItems(this.userId);
             this.renderMerchant();
+            this.updateNpcDialogues();
             this.addJournalEntry('item', 'Acquisto', `Hai comprato: ${item?.name || 'oggetto'}`);
         } catch (err) {
             console.warn('[QuestTracker] Purchase error:', err);

@@ -169,6 +169,54 @@ window.SupaDB = (() => {
         async checkTitles(userId) {
             const { data } = await supa.rpc('check_player_titles', { p_user_id: userId });
             return data;
+        },
+
+        // -- Monsters --
+
+        async getMonsters() {
+            const { data } = await supa.from('monsters_catalog').select('*').order('sort_order');
+            return data || [];
+        },
+
+        async getDefeatedMonsters(userId) {
+            const { data } = await supa.from('player_defeated_monsters')
+                .select('monster_id')
+                .eq('user_id', userId);
+            return data || [];
+        },
+
+        async markMonsterDefeated(userId, monsterId) {
+            const { error } = await supa.from('player_defeated_monsters').insert({
+                user_id: userId,
+                monster_id: monsterId
+            });
+            return !error;
+        },
+
+        // -- Map Paths --
+
+        async getMapPaths() {
+            const { data } = await supa.from('fantasy_map_paths').select('*');
+            return data || [];
+        },
+
+        // -- Map Events --
+
+        async getActiveEvents(userId) {
+            const now = new Date().toISOString();
+            const { data } = await supa.from('map_events')
+                .select('*')
+                .gt('expires_at', now)
+                .not('collected_by', 'cs', `{${userId}}`);
+            return data || [];
+        },
+
+        async collectEventReward(userId, eventId) {
+            const { data } = await supa.rpc('collect_event_reward', {
+                p_user_id: userId,
+                p_event_id: eventId
+            });
+            return data;
         }
     };
 })();

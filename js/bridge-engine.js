@@ -11,15 +11,22 @@ class BridgeEngine {
         };
     }
 
-    static applyRules(activityData) {
+    static applyRules(activityData, itemEffects) {
         const parsed = this.parseActivity(activityData);
         const effects = {};
+        const ie = itemEffects || {};
 
-        if (parsed.type === 'trekking' && parsed.elevation_m >= 300) {
+        // Gli effetti degli oggetti modificano le soglie delle regole bridge
+        const elevReduction = (ie.elevation_reduction || 0) / 100;
+        const mtbEndurance = (ie.mtb_endurance || 0) / 100;
+        const effectiveElev = parsed.elevation_m * (1 - elevReduction);
+        const effectiveDist = parsed.distance_km * (1 - (parsed.type === 'mtb' ? mtbEndurance : 0));
+
+        if (parsed.type === 'trekking' && effectiveElev >= 300) {
             effects.forza = 2;
             effects.rupie = 30;
         }
-        if ((parsed.type === 'trekking' || parsed.type === 'mtb') && parsed.distance_km >= 8) {
+        if ((parsed.type === 'trekking' || parsed.type === 'mtb') && effectiveDist >= 8) {
             effects.costituzione = (effects.costituzione || 0) + 1;
             effects.rupie = (effects.rupie || 0) + 20;
         }
@@ -31,7 +38,7 @@ class BridgeEngine {
             effects.costituzione = (effects.costituzione || 0) + 1;
             effects.punti_esplorazione = 5;
         }
-        if (parsed.elevation_m >= 800) {
+        if (effectiveElev >= 800) {
             effects.cristalli = 1;
             effects.forza = (effects.forza || 0) + 3;
             effects.rupie = (effects.rupie || 0) + 100;

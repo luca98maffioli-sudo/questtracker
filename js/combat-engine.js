@@ -1,59 +1,70 @@
-const MONSTERS = [
-    {
-        id: 'goblin', name: 'Goblin delle Rocce', emoji: '\u{1F47A}',
-        description: 'Una piccola creatura verde con occhi rossi e un randello nodoso. Blocca il ponte verso la Gola del Tuono.',
-        requiredForza: 3, requiredAgilita: 0, requiredCostituzione: 0,
-        unlockQuests: 2, rupieReward: 50, cristalliReward: 1, xpReward: 100,
-        winText: 'Con un colpo ben piazzato, il Goblin vola nel fosso. Il ponte è libero!',
-        loseText: 'Il Goblin ti colpisce con il randello. "Ah ah! Torna quando avrai scalato più montagne, rammollito!"'
-    },
-    {
-        id: 'guardiano', name: 'Guardiano della Foresta', emoji: '\u{1F332}',
-        description: 'Un enorme golem di legno e muschio. I suoi occhi brillano di luce verde e la terra trema ad ogni passo.',
-        requiredForza: 8, requiredAgilita: 3, requiredCostituzione: 0,
-        unlockQuests: 5, rupieReward: 120, cristalliReward: 2, xpReward: 250,
-        winText: 'Il Guardiano si inchina e si dissolve in foglie dorate. Il sentiero per le Rovine Antiche è aperto!',
-        loseText: 'Il Guardiano ti solleva con una radice e ti deposita fuori dalla foresta. "Non sei ancora pronto, giovane eroe. Accumula più forza."'
-    },
-    {
-        id: 'drago', name: 'Drago della Vetta', emoji: '\u{1F409}',
-        description: 'Il leggendario drago di rubino che custodisce il Cristallo Eterno. Le sue scaglie scintillano come brace viva.',
-        requiredForza: 15, requiredAgilita: 8, requiredCostituzione: 10,
-        unlockQuests: 8, rupieReward: 500, cristalliReward: 5, xpReward: 1000,
-        winText: 'Con un ultimo colpo, il Drago ruggisce e si accascia. Il Cristallo Eterno è tuo! La leggenda della tua impresa si diffonderà in tutto il regno.',
-        loseText: 'Il Drago soffia un getto di fiamme che ti costringe alla ritirata. "Troppo debole. Torna quando la tua forza eguaglierà la mia, o brucerai."'
-    }
-];
-
 class CombatEngine {
     constructor(app) {
         this.app = app;
         this.currentMonster = null;
+        this.monsters = [];
+        this.defeatedIds = new Set();
+    }
+
+    async loadMonsters() {
+        this.monsters = [];
+        this.defeatedIds = new Set();
+        if (!this.app.userId) return;
+        try {
+            const [dbMonsters, defeated] = await Promise.all([
+                SupaDB.getMonsters(),
+                SupaDB.getDefeatedMonsters(this.app.userId)
+            ]);
+            this.monsters = dbMonsters || [];
+            this.defeatedIds = new Set((defeated || []).map(d => d.monster_id));
+        } catch (err) {
+            console.warn('[CombatEngine] Load monsters error:', err);
+        }
+    }
+
+    async loadIfNeeded() {
+        if (this.monsters.length === 0) await this.loadMonsters();
     }
 
     getAvailableMonsters() {
         const qc = this.app.player?.questsCompleted || 0;
-        const defeated = this.getDefeated();
-        return MONSTERS.filter(m => qc >= m.unlockQuests && !defeated.includes(m.id));
+        const dbAvailable = this.monsters.filter(m =>
+            qc >= (m.unlock_quests || 0) && !this.defeatedIds.has(m.id)
+        );
+
+        // Merge boss areas che sono sbloccate ma non ancora completate
+        const areaProgress = this.app.areaProgress || [];
+        const bossAreas = areaProgress
+            .filter(ap => ap.is_boss_unlocked && !ap.is_completed && ap.fantasy_map_areas?.boss_quest_id)
+            .map(ap => this.buildBossMonster(ap.fantasy_map_areas));
+
+        return [...dbAvailable, ...bossAreas];
     }
 
-    getDefeated() {
-        try {
-            const s = localStorage.getItem('questtracker_defeated');
-            return s ? JSON.parse(s) : [];
-        } catch { return []; }
-    }
-
-    markDefeated(monsterId) {
-        const d = this.getDefeated();
-        if (!d.includes(monsterId)) {
-            d.push(monsterId);
-            localStorage.setItem('questtracker_defeated', JSON.stringify(d));
-        }
-    }
-
-    hasDefeated(monsterId) {
-        return this.getDefeated().includes(monsterId);
+    // Converte un'area fantasy in formato mostro per CombatEngine.
+    // Usato sia qui (per unificare i boss nel sistema di combattimento)
+    // sia da fantasy-map.js (quando il giocatore rivela un'area boss).
+    buildBossMonster(area) {
+        if (!area) return null;
+        const xpReward = Math.round((area.rupie_reward || 0) * 3);
+        return {
+            id: `area-${area.id}`,
+            name: area.name,
+            emoji: area.emoji || '🐉',
+            description: area.description || '',
+            requiredForza: area.required_forza || 0,
+            requiredAgilita: area.required_agilita || 0,
+            requiredCostituzione: area.required_costituzione || 0,
+            unlockQuests: 0,
+            rupieReward: area.rupie_reward || 0,
+            cristalliReward: area.cristalli_reward || 0,
+            xpReward,
+            isBoss: true,
+            winText: area.lore_text
+                ? `${area.lore_text} Il guardiano di ${area.name} è stato sconfitto!`
+                : `Hai conquistato ${area.name}!`,
+            loseText: `Il guardiano di ${area.name} ti respinge. Allenati nel mondo reale e torna più forte.`
+        };
     }
 
     canFight() {
@@ -104,7 +115,7 @@ class CombatEngine {
         document.getElementById('combatOverlay').classList.add('active');
     }
 
-    resolveCombat() {
+    async resolveCombat() {
         const monster = this.currentMonster;
         const p = this.app.player;
         const forzOk = (p.forza || 0) >= monster.requiredForza;
@@ -133,7 +144,26 @@ class CombatEngine {
             this.app.fantasyResources.rupie += monster.rupieReward;
             this.app.fantasyResources.cristalli += (monster.cristalliReward || 0);
 
-            this.markDefeated(monster.id);
+            if (monster.isBoss) {
+                // Boss area: completa la quest boss e aggiorna area progress
+                const areaId = monster.id.replace('area-', '');
+                const bossQuest = this.app.quests.find(q => q.id === monster.id.replace('area-', ''));
+                const questId = monster.bossQuestId || (this.app.quests || []).find(q =>
+                    q.quest_type === 'grande_avventura' && q.area_id === areaId
+                )?.id;
+                if (questId && this.app.userId) {
+                    await SupaDB.completeQuestWithProgress(this.app.userId, questId);
+                    await this.app.initGuild();
+                    await this.app.refreshFantasyResources();
+                }
+            } else {
+                // Mostro normale: segna come sconfitto su Supabase
+                if (this.app.userId) {
+                    await SupaDB.markMonsterDefeated(this.app.userId, monster.id);
+                    this.defeatedIds.add(monster.id);
+                }
+            }
+
             this.app.addJournalEntry('quest', `Sconfitto: ${monster.name}!`, `${monster.winText.slice(0, 60)}...`);
             this.app.savePlayer();
             this.app.updateHero();

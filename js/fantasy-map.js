@@ -3,11 +3,16 @@ class FantasyMap {
         this.app = app;
         this.areas = [];
         this.discoveries = [];
+        this.paths = [];
+        this.events = [];
         this.gridCols = 8;
         this.gridRows = 6;
         this.container = null;
         this.cells = [];
         this.markers = [];
+        this.eventMarkers = [];
+        // true quando stiamo usando il set locale FANTASY_AREAS (nessun dato DB disponibile)
+        this.usingLocalAreas = false;
     }
 
     async init() {
@@ -19,57 +24,88 @@ class FantasyMap {
     }
 
     async loadData() {
+        let dbAreas = null;
+
         if (this.app.userId) {
             try {
-                const { data: dbAreas } = await SupaDB.supa
+                const { data } = await SupaDB.supa
                     .from('fantasy_map_areas')
                     .select('*');
-                if (dbAreas && dbAreas.length > 0) {
-                    this.areas = dbAreas.map(a => ({
-                        id: a.id,
-                        name: a.name,
-                        description: a.description,
-                        lore_text: a.lore,
-                        area_type: a.is_boss ? 'boss' : 'wilderness',
-                        emoji: a.emoji,
-                        pos_x: (a.grid_x / this.gridCols) * 100,
-                        pos_y: (a.grid_y / this.gridRows) * 100,
-                        size_x: (a.grid_w / this.gridCols) * 100,
-                        size_y: (a.grid_h / this.gridRows) * 100,
-                        exploration_cost: a.required_punti_esplorazione,
-                        required_forza: a.required_stats?.forza || 0,
-                        required_agilita: a.required_stats?.agilita || 0,
-                        required_costituzione: a.required_stats?.costituzione || 0,
-                        rupie_reward: a.reward_rupie,
-                        cristalli_reward: a.reward_cristalli,
-                        is_starting_area: a.is_starting_area,
-                        unlock_order: a.unlock_order,
-                        required_quests_completed: a.required_quests_completed,
-                        boss_quest_id: a.boss_quest_id
-                    }));
-                }
+                if (data && data.length > 0) dbAreas = data;
 
                 const { data: disc } = await SupaDB.supa
                     .from('player_map_discoveries')
                     .select('area_id')
                     .eq('user_id', this.app.userId);
-                if (disc) {
-                    this.discoveries = disc.map(d => d.area_id);
-                }
+                if (disc) this.discoveries = disc.map(d => d.area_id);
             } catch (e) {
                 console.warn('[FantasyMap] Errore caricamento da Supabase:', e);
             }
+        }
 
-            const saved = localStorage.getItem('questtracker_discoveries');
-            if (saved) {
-                const parsed = JSON.parse(saved);
+        if (dbAreas) {
+            this.usingLocalAreas = false;
+            this.areas = dbAreas.map(a => ({
+                id: a.id,
+                name: a.name,
+                description: a.description,
+                lore_text: a.lore,
+                area_type: a.is_boss ? 'boss' : 'wilderness',
+                emoji: a.emoji,
+                pos_x: (a.grid_x / this.gridCols) * 100,
+                pos_y: (a.grid_y / this.gridRows) * 100,
+                size_x: (a.grid_w / this.gridCols) * 100,
+                size_y: (a.grid_h / this.gridRows) * 100,
+                exploration_cost: a.required_punti_esplorazione,
+                required_forza: a.required_stats?.forza || 0,
+                required_agilita: a.required_stats?.agilita || 0,
+                required_costituzione: a.required_stats?.costituzione || 0,
+                rupie_reward: a.reward_rupie,
+                cristalli_reward: a.reward_cristalli,
+                is_starting_area: a.is_starting_area,
+                unlock_order: a.unlock_order,
+                required_quests_completed: a.required_quests_completed,
+                boss_quest_id: a.boss_quest_id
+            }));
+
+            // Carica sentieri e eventi
+            try {
+                const [pathsData, eventsData] = await Promise.all([
+                    SupaDB.getMapPaths(),
+                    SupaDB.getActiveEvents(this.app.userId)
+                ]);
+                this.paths = pathsData || [];
+                this.events = eventsData || [];
+            } catch (e) {
+                console.warn('[FantasyMap] Errore caricamento sentieri/eventi:', e);
+                this.paths = [];
+                this.events = [];
+            }
+        } else {
+            // Modalità locale/offline: usiamo il set statico e uno sblocco
+            // sequenziale calcolato qui, senza dipendere da player_area_progress
+            // (che esiste solo lato Supabase per utenti loggati).
+            this.usingLocalAreas = true;
+            this.areas = FANTASY_AREAS;
+
+            const savedLocal = localStorage.getItem('questtracker_discoveries');
+            if (savedLocal) {
+                const parsed = JSON.parse(savedLocal);
                 this.discoveries = [...new Set([...this.discoveries, ...parsed])];
             }
         }
+    }
 
-        if (!this.areas || this.areas.length === 0) {
-            this.areas = FANTASY_AREAS;
+    // In modalità DB, lo sblocco viene da player_area_progress (this.app.areaProgress).
+    // In modalità locale, l'area i-esima si sblocca quando l'area precedente è stata scoperta.
+    isAreaUnlocked(area, index, progMap) {
+        if (this.usingLocalAreas) {
+            if (index === 0) return true;
+            const prevArea = this.areas[index - 1];
+            return this.discoveries.includes(prevArea.id);
         }
+        const prog = progMap[area.id];
+        return prog?.is_unlocked === true;
     }
 
     render() {
@@ -94,7 +130,6 @@ class FantasyMap {
                 cell.className = 'map-cell fog';
                 cell.dataset.row = row;
                 cell.dataset.col = col;
-                cell.addEventListener('click', () => this.onCellClick(row, col));
                 grid.appendChild(cell);
                 this.cells.push({ el: cell, row, col });
             }
@@ -102,25 +137,20 @@ class FantasyMap {
 
         mapEl.appendChild(grid);
 
-        // Build progression lock map: area_id -> is_unlocked_by_progression
         const areaProgress = this.app.areaProgress || [];
         const progMap = {};
         areaProgress.forEach(ap => { progMap[ap.area_id] = ap; });
 
-        // Markers layer
         const markersLayer = document.createElement('div');
         markersLayer.className = 'fantasy-markers';
 
         this.markers = [];
-        this.areas.forEach(area => {
-            const prog = progMap[area.id];
-            const areaUnlocked = prog?.is_unlocked === true;
+        this.areas.forEach((area, index) => {
+            const areaUnlocked = this.isAreaUnlocked(area, index, progMap);
             const discovered = this.discoveries.includes(area.id);
 
             let visibility = 'locked';
-            if (!areaUnlocked) visibility = 'locked';
-            else if (discovered) visibility = 'revealed';
-            else visibility = 'hidden';
+            if (areaUnlocked) visibility = discovered ? 'revealed' : 'hidden';
 
             const marker = document.createElement('div');
             marker.className = `map-marker ${visibility}`;
@@ -131,7 +161,7 @@ class FantasyMap {
             if (!areaUnlocked) {
                 tooltipHtml = `
                     <div class="marker-name">🔒 ???</div>
-                    <div class="marker-desc">Completa la Grande Avventura dell'area precedente per sbloccare.</div>
+                    <div class="marker-desc">Scopri l'area precedente per sbloccare questa zona.</div>
                 `;
             } else if (!discovered) {
                 tooltipHtml = `
@@ -172,12 +202,61 @@ class FantasyMap {
             }
 
             markersLayer.appendChild(marker);
-            this.markers.push({ el: marker, area, discovered, areaUnlocked });
+            this.markers.push({ el: marker, area, index, discovered, areaUnlocked });
         });
 
         mapEl.appendChild(markersLayer);
 
-        // Legend
+        // Sentieri SVG tra le aree connesse
+        const svgLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svgLayer.setAttribute('class', 'fantasy-paths');
+        svgLayer.setAttribute('viewBox', '0 0 100 100');
+        svgLayer.setAttribute('preserveAspectRatio', 'none');
+        this.paths.forEach(path => {
+            const from = this.areas.find(a => a.id === path.from_area_id);
+            const to = this.areas.find(a => a.id === path.to_area_id);
+            if (!from || !to) return;
+            const discovered = this.discoveries.includes(to.id);
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', from.pos_x + (from.size_x || 10) / 2);
+            line.setAttribute('y1', from.pos_y + (from.size_y || 10) / 2);
+            line.setAttribute('x2', to.pos_x + (to.size_x || 10) / 2);
+            line.setAttribute('y2', to.pos_y + (to.size_y || 10) / 2);
+            line.setAttribute('class', `path-line ${discovered ? 'revealed' : 'hidden'}`);
+            svgLayer.appendChild(line);
+        });
+        mapEl.appendChild(svgLayer);
+
+        // Eventi random
+        this.eventMarkers = [];
+        this.events.forEach(evt => {
+            const area = this.areas.find(a => a.id === evt.area_id);
+            if (!area || !this.discoveries.includes(area.id)) return;
+            const em = document.createElement('div');
+            em.className = 'map-event-marker';
+            em.style.left = `${area.pos_x + (area.size_x || 10) * 0.8}%`;
+            em.style.top = `${area.pos_y}%`;
+            em.innerHTML = `<div class="event-icon">✨</div>
+                <div class="event-tooltip">
+                    <div class="event-title">${evt.title}</div>
+                    <div class="event-desc">${evt.description || ''}</div>
+                    ${evt.reward_rupie > 0 ? `<div class="event-reward">🪙 +${evt.reward_rupie} Rupie</div>` : ''}
+                    ${evt.reward_cristalli > 0 ? `<div class="event-reward">💎 +${evt.reward_cristalli} Cristalli</div>` : ''}
+                    ${evt.reward_pe > 0 ? `<div class="event-reward">🗺️ +${evt.reward_pe} PE</div>` : ''}
+                    <button class="btn-event-collect" data-event-id="${evt.id}">🎁 Raccogli</button>
+                </div>`;
+            mapEl.appendChild(em);
+            this.eventMarkers.push(em);
+
+            const btn = em.querySelector('.btn-event-collect');
+            if (btn) {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.collectEventReward(evt.id);
+                });
+            }
+        });
+
         const legend = document.createElement('div');
         legend.className = 'fantasy-legend';
         legend.innerHTML = `
@@ -204,9 +283,8 @@ class FantasyMap {
             const cx = (col + 0.5) / this.gridCols * 100;
             const cy = (row + 0.5) / this.gridRows * 100;
 
-            const nearRevealed = this.areas.some(area => {
-                const prog = progMap[area.id];
-                if (!prog?.is_unlocked) return false;
+            const nearRevealed = this.areas.some((area, index) => {
+                if (!this.isAreaUnlocked(area, index, progMap)) return false;
                 if (!this.discoveries.includes(area.id)) return false;
                 const dx = cx - area.pos_x;
                 const dy = cy - area.pos_y;
@@ -217,13 +295,17 @@ class FantasyMap {
         });
 
         this.markers.forEach(m => {
+            const areaUnlocked = this.isAreaUnlocked(m.area, m.index, progMap);
             let visibility = 'locked';
-            if (!m.areaUnlocked) visibility = 'locked';
-            else if (this.discoveries.includes(m.area.id)) visibility = 'revealed';
-            else visibility = 'hidden';
+            if (areaUnlocked) visibility = this.discoveries.includes(m.area.id) ? 'revealed' : 'hidden';
             m.el.className = `map-marker ${visibility}`;
+            m.areaUnlocked = areaUnlocked;
         });
     }
+
+    // buildBossMonster spostato in combat-engine.js per coerenza
+    // (tutti i combattimenti passano dallo stesso motore).
+    // Qui chiamiamo direttamente combatEngine.buildBossMonster().
 
     async revealArea(areaId) {
         const area = this.areas.find(a => a.id === areaId);
@@ -235,72 +317,80 @@ class FantasyMap {
             return;
         }
 
+        const isBoss = area.area_type === 'boss';
+
+        // Paga sempre il costo in Punti Esplorazione per rivelare l'area
+        this.app.fantasyResources.punti_esplorazione -= area.exploration_cost;
+
+        // Per le aree non-boss la ricompensa si ottiene subito con la scoperta.
+        // Per le aree boss la ricompensa è invece condizionata all'esito del combattimento
+        // (vedi CombatEngine.resolveCombat), quindi non la anticipiamo qui.
+        if (!isBoss) {
+            if (area.rupie_reward) this.app.fantasyResources.rupie += area.rupie_reward;
+            if (area.cristalli_reward) this.app.fantasyResources.cristalli += area.cristalli_reward;
+        }
+
+        this.app.savePlayer();
+        this.app.updateHero();
+
         if (this.app.userId) {
             try {
-                const { data, error } = await SupaDB.supa.rpc('reveal_map_area', {
+                await SupaDB.supa.rpc('reveal_map_area', {
                     p_user_id: this.app.userId,
                     p_area_id: areaId
                 });
-
-                if (error || !data?.success) {
-                    alert(data?.error || error?.message || 'Errore sconosciuto');
-                    return;
-                }
-
-                this.app.fantasyResources.punti_esplorazione -= area.exploration_cost;
-                if (area.rupie_reward) this.app.fantasyResources.rupie += area.rupie_reward;
-                if (area.cristalli_reward) this.app.fantasyResources.cristalli += area.cristalli_reward;
-                this.app.savePlayer();
-                this.app.updateHero();
-
             } catch (err) {
-                console.warn('Supabase reveal failed, using local mode:', err);
-                this.app.fantasyResources.punti_esplorazione -= area.exploration_cost;
-                if (area.rupie_reward) this.app.fantasyResources.rupie += area.rupie_reward;
-                if (area.cristalli_reward) this.app.fantasyResources.cristalli += area.cristalli_reward;
-                this.app.savePlayer();
-                this.app.updateHero();
+                console.warn('[FantasyMap] Sync reveal_map_area fallito (continuo in locale):', err);
             }
-        } else {
-            this.app.fantasyResources.punti_esplorazione -= area.exploration_cost;
-            if (area.rupie_reward) this.app.fantasyResources.rupie += area.rupie_reward;
-            if (area.cristalli_reward) this.app.fantasyResources.cristalli += area.cristalli_reward;
-            this.app.savePlayer();
-            this.app.updateHero();
         }
 
         this.discoveries.push(areaId);
         localStorage.setItem('questtracker_discoveries', JSON.stringify(this.discoveries));
 
-        if (area.area_type === 'boss') {
-            this.showBossEncounter(area);
+        // Lore per-area: ogni scoperta lascia una traccia narrativa nel diario,
+        // non solo nel tooltip della mappa.
+        if (this.app.addJournalEntry) {
+            this.app.addJournalEntry('exploration', `Scoperta: ${area.name}`, area.lore_text || area.description || '');
         }
 
         this.updateFog();
+
+        if (isBoss) {
+            this.app.combatEngine.openEncounter(this.app.combatEngine.buildBossMonster(area));
+        }
     }
 
-    showBossEncounter(area) {
-        const p = this.app.player;
-        const forzaOk = (p.forza || 0) >= area.required_forza;
+    async collectEventReward(eventId) {
+        if (!this.app.userId) return;
+        try {
+            const result = await SupaDB.collectEventReward(this.app.userId, eventId);
+            if (result?.success) {
+                const parts = [];
+                if (result.rupie) parts.push(`🪙 +${result.rupie} Rupie`);
+                if (result.cristalli) parts.push(`💎 +${result.cristalli} Cristalli`);
+                if (result.pe) parts.push(`🗺️ +${result.pe} PE`);
+                alert(`Ricompensa raccolta!\n\n${parts.join('\n')}`);
 
-        const modal = document.getElementById('completionModal');
-        modal.classList.add('active');
-        document.getElementById('modalIcon').textContent = '\u{1F409}';
-        document.getElementById('modalTitle').textContent = `INCONTRO: ${area.name}!`;
+                // Rimuove il marker evento
+                this.eventMarkers.forEach(em => {
+                    const btn = em.querySelector('.btn-event-collect');
+                    if (btn && btn.dataset.eventId === eventId) em.remove();
+                });
+                this.eventMarkers = this.eventMarkers.filter(em => {
+                    const btn = em.querySelector('.btn-event-collect');
+                    return btn && btn.dataset.eventId !== eventId;
+                });
+                this.events = this.events.filter(e => e.id !== eventId);
 
-        if (forzaOk) {
-            document.getElementById('modalText').innerHTML =
-                `La tua Forza (${p.forza}) è sufficiente per affrontare il guardiano!<br><br>` +
-                `\u{1F389} Hai superato la sfida!<br>` +
-                `\u{1FA99} +${area.rupie_reward} Rupie \u{1F48E} +${area.cristalli_reward} Cristalli`;
-        } else {
-            document.getElementById('modalText').innerHTML =
-                `\u{1F6AB} La tua Forza (${p.forza}) non è sufficiente!<br><br>` +
-                `Serve Forza \u{2265} ${area.required_forza} per affrontare questa sfida.<br>` +
-                `\u{26F0}\u{FE0F} Allenati in salita nel mondo reale e ritorna più forte!`;
+                await this.app.refreshFantasyResources();
+                this.app.updateHero();
+            } else {
+                alert(result?.error || 'Impossibile raccogliere la ricompensa.');
+            }
+        } catch (err) {
+            console.warn('[FantasyMap] Collect event reward error:', err);
+            alert('Errore durante la raccolta della ricompensa.');
         }
-
-        document.getElementById('modalCloseBtn').textContent = '\u{2728} Continua';
     }
 }
 

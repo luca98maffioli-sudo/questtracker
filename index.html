@@ -70,6 +70,10 @@
                         <div class="hero-level pixel-font">Lv.<span id="heroLevel">1</span></div>
                     </div>
                 </div>
+                <div class="quest-dialogue-box" id="saggioBox">
+                    <div class="dialogue-npc">&#x1F9D9; Il Saggio del Villaggio</div>
+                    <div class="dialogue-text" id="saggioDialogueText">"Benvenuto, giovane avventuriero."</div>
+                </div>
                 <div class="hero-xp-card">
                     <div class="xp-label">
                         <span>ESPERIENZA</span>
@@ -110,7 +114,7 @@
                     </div>
                 </div>
                 <div class="hero-card resources-card">
-                    <div class="hero-card-title">&#x1F4B0; Borsellino</div>
+                    <div class="hero-card-title">&#x1F4B0; Borsellino <button class="info-btn" data-info="economy" type="button" aria-label="Come funziona il Borsellino">&#9432;</button></div>
                     <div class="res-row">
                         <div class="res-item"><span class="res-icon">&#x1FA99;</span><span class="res-val" id="resRupie">0</span><span class="res-label">Rupie</span></div>
                         <div class="res-divider"></div>
@@ -158,9 +162,14 @@
                     </div>
                 </div>
 
+                <div class="quest-dialogue-box" id="capoGildaBox">
+                    <div class="dialogue-npc">&#x1F396;&#65039; Capo Gilda</div>
+                    <div class="dialogue-text" id="capoGildaDialogueText">"Benvenuto in Gilda, avventuriero."</div>
+                </div>
+
                 <!-- Quest Attive -->
                 <div class="guild-section">
-                    <div class="guild-section-title">&#x2694;&#xFE0F; Quest Attive <span class="active-count" id="activeQuestCount">0/2</span></div>
+                    <div class="guild-section-title">&#x2694;&#xFE0F; Quest Attive <span class="active-count" id="activeQuestCount">0/2</span> <button class="info-btn" data-info="guild-slots" type="button" aria-label="Come funzionano gli slot quest">&#9432;</button></div>
                     <div id="activeQuestsList"><div class="empty-state">Nessuna quest attiva. Scegli dalla bacheca!</div></div>
                 </div>
 
@@ -177,7 +186,11 @@
 
                 <!-- Mercante -->
                 <div class="guild-section">
-                    <div class="guild-section-title">&#x1F6CD; Mercante</div>
+                    <div class="guild-section-title">&#x1F6CD; Mercante <button class="info-btn" data-info="merchant" type="button" aria-label="Come funziona il Mercante">&#9432;</button></div>
+                    <div class="quest-dialogue-box" id="mercanteBox">
+                        <div class="dialogue-npc">&#x1F6D2; Il Mercante</div>
+                        <div class="dialogue-text" id="mercanteDialogueText">"Dai un'occhiata alla mia merce!"</div>
+                    </div>
                     <div class="merchant-res" id="merchantResources">
                         <span>&#x1FA99; <b id="merchantRupie">0</b> Rupie</span>
                         <span class="res-divider">|</span>
@@ -189,6 +202,14 @@
 
             <!-- Quests -->
             <section class="screen" id="questsScreen">
+                <div class="free-exploration-card" id="freeExplorationCard">
+                    <div class="free-exp-title">&#x1F9ED; Esplorazione Libera</div>
+                    <div class="free-exp-desc">Traccia un percorso qualsiasi, anche senza una quest predefinita: la ricompensa si calcola in base a distanza, dislivello e durata.</div>
+                    <div class="free-exp-btns">
+                        <button class="btn btn-secondary" id="freeExpWalkBtn">&#x1F97E; A piedi</button>
+                        <button class="btn btn-secondary" id="freeExpBikeBtn">&#x1F6B5; MTB</button>
+                    </div>
+                </div>
                 <div class="quest-filters">
                     <button class="filter-btn active" data-filter="all">Tutte</button>
                     <button class="filter-btn" data-filter="available">Disponibili</button>
@@ -289,6 +310,16 @@
                 <button class="btn btn-secondary" id="pauseBtn">&#x23F8;&#65039; Pausa</button>
                 <button class="btn btn-danger" id="stopBtn">&#x23F9;&#65039; Termina</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Info Modal (spiegazioni economia, gilda, mercante) -->
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-box">
+            <div class="modal-icon" id="infoModalIcon">&#x1F4D6;</div>
+            <div class="modal-title pixel-font" id="infoModalTitle">Info</div>
+            <div class="modal-text modal-text-left" id="infoModalText"></div>
+            <button class="btn btn-secondary" id="infoModalCloseBtn">&#x2716; Chiudi</button>
         </div>
     </div>
 
