@@ -3,10 +3,6 @@ const CLASS_AVATARS = {
     'Biker': '\u{1F6B5}', 'Nomade': '\u{1F30D}'
 };
 
-// Dialoghi NPC ricorrenti che evolvono con livello / quest / progresso.
-// Per ogni NPC, l'array contiene soglie in ordine di priorità (la prima
-// corrispondente vince). minLevel / minQuests / minForza / minAgilita /
-// minCostituzione / hasBossUnlocked / hasAreaCompleted sono opzionali.
 const NPC_DIALOGUES = {
     saggio: [
         {
@@ -73,7 +69,6 @@ const NPC_DIALOGUES = {
     ]
 };
 
-// Testi delle spiegazioni richiamate dai pulsanti ⓘ sparsi nell'interfaccia.
 const INFO_CONTENT = {
     economy: {
         icon: '\u{1F4B0}',
@@ -103,7 +98,6 @@ const INFO_CONTENT = {
     }
 };
 
-// Etichette leggibili per l'effect_type degli oggetti (items_catalog).
 function formatItemEffect(item) {
     if (!item || !item.effect_type) return '';
     const v = item.effect_value;
@@ -115,39 +109,50 @@ function formatItemEffect(item) {
         mtb_endurance: `-${v}% fatica su lunghe distanze MTB`,
         stat_bonus: `+${v} Costituzione a fine Grande Avventura`,
         temp_stat: `+${v} Forza temporanea (prossima uscita)`,
-        waypoint_save: `Salva un punto di ritorno GPS`
+        waypoint_save: `Salva un punto di ritorno GPS`,
+        fishing_luck: `+${v}% probabilità pesca rara`
     };
     return labels[item.effect_type] || `Effetto: ${item.effect_type} (${v})`;
 }
 
 class App {
     constructor() {
-        this.currentQuest = null;
-        this.tracker = null;
-        this.trackPoints = [];
-        this.startTime = null;
-        this.timerInterval = null;
-        this.tabTitleInterval = null;
-        this.totalDistance = 0;
-        this.totalElevation = 0;
-        this.map = null;
-        this.trackingMap = null;
-        this.questLayers = {};
-        this.quests = [];
-        this.progress = {};
-        this.player = null;
         this.userId = null;
+        this.player = null;
         this.fantasyResources = null;
-        this.fantasyMap = null;
-        this.journal = [];
-        this.dayOffset = 0;
-        this.combatEngine = null;
+        this.quests = [];
         this.activeQuests = [];
-        this.areaProgress = [];
-        this.itemsCatalog = [];
         this.playerItems = [];
-        this.playerTitles = [];
+        this.itemsCatalog = [];
         this.titlesCatalog = [];
+        this.playerTitles = [];
+        this.areaProgress = [];
+        this.journal = [];
+        this.combatEngine = null;
+        this.fantasyMap = null;
+        this.lastQuestFetch = 0;
+
+        // Passive GPS tracking
+        this.gpsWatchId = null;
+        this.lastPosition = null;
+        this.questProgress = {};
+        this.passiveEnabled = false;
+
+        // Adventure mode
+        this.adventureMode = false;
+        this.adventureStartTime = null;
+        this.adventureTrack = [];
+        this.adventureTimer = null;
+
+        // Minigame engine
+        this.minigameEngine = null;
+        this.fishingInventory = {};
+
+        // Completed quests tracking
+        this.completedQuestIds = new Set();
+
+        // Event queue for toast notifications
+        this.eventQueue = [];
 
         this.init();
     }
@@ -160,17 +165,25 @@ class App {
             const resSaved = localStorage.getItem('questtracker_resources');
             if (resSaved) this.fantasyResources = JSON.parse(resSaved);
             this.loadJournal();
+            // Load quest progress from localStorage
+            try {
+                const qp = localStorage.getItem('questtracker_quest_progress');
+                if (qp) this.questProgress = JSON.parse(qp);
+            } catch (_) {}
+            // Load completed quests
+            try {
+                const cq = localStorage.getItem('questtracker_completed_quests');
+                if (cq) this.completedQuestIds = new Set(JSON.parse(cq));
+            } catch (_) {}
             if (this.userId) {
                 try {
                     const { data: { session } } = await SupaDB.supa.auth.getSession();
                     if (!session) {
-                        console.warn('[QuestTracker] Nessuna sessione valida al refresh, mostra login');
                         this.player = null;
                         this.userId = null;
                         localStorage.removeItem('questtracker_player');
                     }
                 } catch (err) {
-                    console.warn('[QuestTracker] Errore verifica sessione:', err);
                     this.player = null;
                     this.userId = null;
                     localStorage.removeItem('questtracker_player');
@@ -182,17 +195,20 @@ class App {
                     await this.refreshPlayerFromSupabase(user.id, this.player.username, this.player.playerClass);
                     this.savePlayer();
                 } catch (err) {
-                    console.warn('[QuestTracker] Auto-login fallito, modalità locale:', err);
+                    console.warn('[App] Auto-login fallito, modalità locale:', err);
                 }
             }
             if (this.player) {
                 await this.loadQuests();
-                this.loadLocalProgress();
-                if (this.userId) await this.initGuild();
+                if (this.userId) {
+                    await this.initGuild();
+                    // Sync quest progress to DB
+                    await this.syncQuestProgressToDB();
+                }
             }
         }
-        if (this.player) this.showMainApp();
         this.setupEventListeners();
+        if (this.player) this.showMainApp();
     }
 
     setupEventListeners() {
@@ -203,23 +219,10 @@ class App {
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.addEventListener('click', () => this.switchScreen(tab.dataset.screen));
         });
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                this.renderQuests(btn.dataset.filter);
-            });
-        });
-        document.getElementById('qdStartBtn').addEventListener('click', () => {
-            document.getElementById('questDetailOverlay').classList.remove('active');
-            this.beginTracking();
-        });
         document.getElementById('qdCancelBtn').addEventListener('click', () => {
             document.getElementById('questDetailOverlay').classList.remove('active');
             this.currentQuest = null;
         });
-        document.getElementById('pauseBtn').addEventListener('click', () => this.togglePause());
-        document.getElementById('stopBtn').addEventListener('click', () => this.stopTracking());
         document.getElementById('modalCloseBtn').addEventListener('click', () => {
             document.getElementById('completionModal').classList.remove('active');
         });
@@ -238,12 +241,8 @@ class App {
         document.getElementById('combatCloseBtn').addEventListener('click', () => {
             this.combatEngine?.closeCombat();
         });
-        document.getElementById('freeExpWalkBtn').addEventListener('click', () => {
-            this.beginFreeExploration('trekking');
-        });
-        document.getElementById('freeExpBikeBtn').addEventListener('click', () => {
-            this.beginFreeExploration('mtb');
-        });
+        document.getElementById('advStartBtn').addEventListener('click', () => this.startAdventureMode());
+        document.getElementById('advStopBtn').addEventListener('click', () => this.stopAdventureMode());
     }
 
     async login() {
@@ -277,7 +276,6 @@ class App {
             forza: 0, agilita: 0, costituzione: 0
         };
         this.fantasyResources = { rupie: 0, cristalli: 0, punti_esplorazione: 0 };
-        this.progress = {};
 
         this.savePlayer();
         this.saveJournal();
@@ -323,34 +321,22 @@ class App {
                         description: q.description || null,
                         npc_dialogue: q.npc_dialogue || null,
                         coords, quest_type: q.quest_type || 'normal', area_id: q.area_id,
-                        emoji: q.emoji || ''
+                        emoji: q.emoji || '', lore: q.lore || null
                     };
                 });
-                console.log(`[QuestTracker] Caricate ${this.quests.length} quest da Supabase`);
                 return;
             }
-            console.warn('[QuestTracker] Nessuna quest su Supabase');
         } catch (err) {
-            console.warn('[QuestTracker] Errore caricamento quest:', err);
+            console.warn('[App] Errore caricamento quest:', err);
         }
         this.quests = [];
     }
-
-    loadLocalProgress() {
-        try { const s = localStorage.getItem('questtracker_progress'); if (s) this.progress = JSON.parse(s); } catch (_) {}
-    }
-
-    saveProgress() { localStorage.setItem('questtracker_progress', JSON.stringify(this.progress)); }
 
     loadJournal() {
         try {
             const s = localStorage.getItem('questtracker_journal');
             if (s) {
                 this.journal = JSON.parse(s);
-                if (this.journal.length > 0) {
-                    const first = new Date(this.journal[0].ts);
-                    this.dayOffset = Math.floor((Date.now() - first.getTime()) / 86400000);
-                }
             }
         } catch (_) {}
     }
@@ -375,6 +361,46 @@ class App {
         this.syncToSupabase();
     }
 
+    saveQuestProgress() {
+        localStorage.setItem('questtracker_quest_progress', JSON.stringify(this.questProgress));
+    }
+
+    async syncQuestProgressToDB() {
+        if (!this.userId) return;
+        for (const [questId, progress] of Object.entries(this.questProgress)) {
+            try {
+                await SupaDB.supa.from('quest_progress').upsert({
+                    user_id: this.userId,
+                    quest_id: parseInt(questId),
+                    distance_covered: progress.distance,
+                    elevation_gained: progress.elevation,
+                    duration_seconds: Math.round(progress.duration * 60)
+                }, { onConflict: 'user_id,quest_id' });
+            } catch (_) {}
+        }
+    }
+
+    async loadQuestProgressFromDB() {
+        if (!this.userId) return;
+        try {
+            const { data } = await SupaDB.supa.from('quest_progress')
+                .select('*')
+                .eq('user_id', this.userId);
+            if (data) {
+                data.forEach(row => {
+                    // Don't overwrite local progress (which may be more recent)
+                    if (!this.questProgress[row.quest_id]) {
+                        this.questProgress[row.quest_id] = {
+                            distance: row.distance_covered || 0,
+                            elevation: row.elevation_gained || 0,
+                            duration: (row.duration_seconds || 0) / 60
+                        };
+                    }
+                });
+            }
+        } catch (_) {}
+    }
+
     async syncToSupabase() {
         if (!this.userId) return;
         try {
@@ -388,7 +414,7 @@ class App {
                 forza: this.player.forza, agilita: this.player.agilita, costituzione: this.player.costituzione
             }).eq('user_id', this.userId);
         } catch (err) {
-            console.warn('[QuestTracker] Sync fallito:', err);
+            console.warn('[App] Sync fallito:', err);
         }
     }
 
@@ -399,9 +425,14 @@ class App {
             this.combatEngine = new CombatEngine(this);
             this.combatEngine.loadMonsters();
         }
+        if (!this.minigameEngine) {
+            this.minigameEngine = new MinigameEngine(this);
+        }
         this.updateHero();
-        this.renderQuests();
-        this.initMap();
+        this.initFantasyMap();
+        this.renderGuild();
+        this.renderMerchant();
+        this.initPassiveTracking();
     }
 
     switchScreen(screen) {
@@ -409,9 +440,10 @@ class App {
         document.querySelector(`[data-screen="${screen}"]`).classList.add('active');
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         document.getElementById(`${screen}Screen`).classList.add('active');
-        if (screen === 'map') setTimeout(() => this.map?.invalidateSize(), 100);
         if (screen === 'fantasy') this.initFantasyMap();
-        if (screen === 'guild') this.renderGuild();
+        if (screen === 'guild') {
+            this.renderGuild();
+        }
         if (screen === 'diary') this.renderDiary();
     }
 
@@ -462,10 +494,7 @@ class App {
             const dialogues = NPC_DIALOGUES[npcId];
             if (!dialogues) return;
 
-            // Sceglie la prima soglia che matcha (dall'alto: più
-            // specifica alla meno specifica) in base allo stato corrente.
             const match = dialogues.find(d => {
-                // Se ha una condizione non soddisfatta, salta
                 if (d.minLevel && p.level < d.minLevel) return false;
                 if (d.minQuests && p.questsCompleted < d.minQuests) return false;
                 if (d.minForza && (p.forza || 0) < d.minForza) return false;
@@ -482,6 +511,44 @@ class App {
                 el.textContent = match.text;
             }
         });
+    }
+
+    getEquippedEffects() {
+        const effects = {};
+        const items = this.playerItems || [];
+        items.forEach(pi => {
+            if (!pi.equipped || !pi.items_catalog) return;
+            const c = pi.items_catalog;
+            if (c.effect_type) {
+                effects[c.effect_type] = c.effect_value;
+            }
+        });
+        return effects;
+    }
+
+    renderItemEffectsBadge() {
+        const badge = document.getElementById('itemEffectsBadge');
+        if (!badge) return;
+        const effects = this.getEquippedEffects();
+        const entries = Object.entries(effects);
+        if (entries.length === 0) {
+            badge.innerHTML = '';
+            return;
+        }
+        badge.innerHTML = '<div class="effects-badge-title">✨ Effetti Attivi</div>' +
+            entries.map(([type, val]) => {
+                const labels = {
+                    xp_bonus: `+${val}% XP`,
+                    elevation_reduction: `-${val}% dislivello`,
+                    area_unlock: `Sblocco area`,
+                    speed_bonus: `+${val}% velocità`,
+                    mtb_endurance: `-${val}% fatica`,
+                    stat_bonus: `+${val} Cost.`,
+                    temp_stat: `+${val} Forza temp.`,
+                    waypoint_save: `Waypoint`
+                };
+                return `<span class="effects-badge-item">✨ ${labels[type] || type}</span>`;
+            }).join('');
     }
 
     updateHero() {
@@ -529,6 +596,7 @@ class App {
         this.renderCombatCard();
         this.renderInventory();
         this.renderTitles();
+        this.renderItemEffectsBadge();
         this.updateNpcDialogues();
     }
 
@@ -566,7 +634,7 @@ class App {
             if (qc === 0) {
                 el.innerHTML = '<div class="combat-none">Completa <strong>2 quest</strong> per sbloccare la prima sfida!</div>';
             } else {
-                const next = MONSTERS.find(m => m.unlockQuests > qc);
+                const next = (this.combatEngine?.monsters || []).find(m => m.unlockQuests > qc);
                 if (next) {
                     el.innerHTML = `<div class="combat-none">Altre <strong>${next.unlockQuests - qc}</strong> quest per sbloccare: ${next.emoji} ${next.name}</div>`;
                 } else {
@@ -604,7 +672,6 @@ class App {
         const items = this.playerItems || [];
         const catalog = this.itemsCatalog || [];
 
-        // Equipped slots
         const equipped = {};
         items.forEach(pi => {
             if (pi.equipped && pi.items_catalog) {
@@ -630,7 +697,6 @@ class App {
             });
         });
 
-        // Owned items (not equipped)
         const owned = items.filter(pi => !pi.equipped);
         document.getElementById('ownedCount').textContent = owned.length;
         const ownedList = document.getElementById('ownedItemsList');
@@ -662,7 +728,7 @@ class App {
             this.renderInventory();
             this.updateHero();
         } catch (err) {
-            console.warn('[QuestTracker] Unequip error:', err);
+            console.warn('[App] Unequip error:', err);
         }
     }
 
@@ -690,7 +756,6 @@ class App {
     }
 
     renderDiary() {
-        // Journal entries
         const entryList = document.getElementById('diaryEntryList');
         if (entryList) {
             const entries = this.journal.slice().reverse();
@@ -711,7 +776,6 @@ class App {
             }
         }
 
-        // Lore chapters
         const loreList = document.getElementById('diaryLoreList');
         if (!loreList) return;
         const completedAreas = (this.areaProgress || []).filter(a => a.is_completed);
@@ -732,154 +796,117 @@ class App {
         }).join('');
     }
 
-    renderQuests(filter = 'all') {
-        const list = document.getElementById('questList');
-        list.innerHTML = '';
-        let quests = this.quests;
-        if (filter === 'available') quests = quests.filter(q => !this.progress[q.id]);
-        else if (filter === 'completed') quests = quests.filter(q => this.progress[q.id]);
-        else if (filter === 'trekking') quests = quests.filter(q => q.type === 'trekking');
-        else if (filter === 'mtb') quests = quests.filter(q => q.type === 'mtb');
+    // ── Passive GPS Tracking ──
 
-        quests.forEach(quest => {
-            const completed = this.progress[quest.id];
-            const card = document.createElement('div');
-            card.className = `quest-card ${completed ? 'completed' : ''}`;
-            card.innerHTML = `
-                <div class="quest-header">
-                    <div class="quest-icon ${quest.type}">${quest.type === 'trekking' ? '\u{1F97E}' : '\u{1F6B5}'}</div>
-                    <div><div class="quest-title">${quest.title}</div><div class="quest-region">${quest.region}</div></div>
-                </div>
-                <div class="quest-meta">
-                    <span>\u{1F4CF} ${quest.distance} km</span>
-                    <span>\u26F0\uFE0F ${quest.elevation}m</span>
-                    <span class="quest-xp">\u26A1 ${quest.xpReward} XP</span>
-                </div>
-            `;
-            card.addEventListener('click', () => { if (!completed) this.showQuestDetail(quest); });
-            list.appendChild(card);
-        });
+    initPassiveTracking() {
+        if (this.passiveEnabled) return;
+        if (!navigator.geolocation) {
+            console.warn('[App] Geolocation non disponibile');
+            return;
+        }
+        this.passiveEnabled = true;
+        this.gpsWatchId = navigator.geolocation.watchPosition(
+            pos => this.contributeMovement(
+                pos.coords.latitude,
+                pos.coords.longitude,
+                pos.coords.altitude || 0,
+                pos.timestamp
+            ),
+            err => {
+                if (err.code === err.PERMISSION_DENIED) {
+                    console.warn('[App] GPS permesso negato');
+                    this.passiveEnabled = false;
+                }
+            },
+            { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+        );
     }
 
-    showQuestDetail(quest) {
-        this.currentQuest = quest;
-        document.getElementById('qdIcon').textContent = quest.type === 'trekking' ? '\u{1F97E}' : '\u{1F6B5}';
-        document.getElementById('qdTitle').textContent = quest.title;
-        document.getElementById('qdRegion').textContent = quest.region;
-        document.getElementById('qdLore').textContent = quest.description || 'Intraprendi questa missione e scopri cosa ti aspetta...';
-        document.getElementById('qdDialogueText').textContent = quest.npc_dialogue || '"Parla con gli abitanti del villaggio per saperne di più..."';
-        document.getElementById('qdDist').textContent = quest.distance;
-        document.getElementById('qdElev').textContent = quest.elevation;
-        document.getElementById('qdXp').textContent = quest.xpReward;
-        document.getElementById('questDetailOverlay').classList.add('active');
+    contributeMovement(lat, lng, alt, timestamp) {
+        const ts = typeof timestamp === 'number' ? timestamp : Date.now();
+        const curr = { lat, lng, alt, timestamp: ts };
+
+        if (!this.lastPosition) {
+            this.lastPosition = curr;
+            return;
+        }
+
+        const effects = this.getEquippedEffects();
+        const speedBonus = effects.mtb_endurance || 0;
+        const segment = GameEngine.filterMovementSegment(this.lastPosition, curr, speedBonus);
+        this.lastPosition = curr;
+        if (!segment || !segment.valid) return;
+
+        const distKm = segment.distanceMeters / 1000;
+        const elevM = segment.elevationMeters;
+        const durMin = segment.minutes;
+
+        // Adventure mode recording
+        if (this.adventureMode) {
+            this.adventureTrack.push({ lat, lng, alt, timestamp: ts });
+            this.updateLiveCounters(distKm, elevM);
+        }
+
+        // Update player totals
+        this.player.totalDistance += distKm;
+        this.player.totalElevation += elevM;
+        this.player.totalTime += durMin;
+
+        // Update quest progress for each active quest
+        let anyUpdated = false;
+        for (const aq of this.activeQuests) {
+            const q = aq.quests;
+            if (!q || q.quest_type === 'grande_avventura') continue;
+            const questId = aq.quest_id;
+            const qp = this.questProgress[questId] || { distance: 0, elevation: 0, duration: 0 };
+
+            qp.distance += distKm;
+            qp.elevation += elevM;
+            qp.duration += durMin;
+            this.questProgress[questId] = qp;
+            anyUpdated = true;
+
+            // Check if quest thresholds are met
+            if (!aq._completing) {
+                const distOk = !q.distance || qp.distance >= q.distance;
+                const elevOk = !q.elevation || qp.elevation >= q.elevation;
+                if (distOk && elevOk) {
+                    aq._completing = true;
+                    this.finalizeQuestCompletion(aq, qp);
+                }
+            }
+        }
+
+        if (anyUpdated) {
+            this.saveQuestProgress();
+            if (document.getElementById('guildScreen')?.classList.contains('active')) {
+                this.renderBacheca();
+            }
+        }
+
+        // Minigame roll: fishing chance based on distance traveled
+        this.minigameEngine?.rollForFishing(distKm);
     }
 
-    beginFreeExploration(type) {
-        this.currentQuest = {
-            id: `free-${Date.now()}`,
-            title: type === 'mtb' ? 'Esplorazione MTB' : 'Esplorazione a Piedi',
-            type: type,
-            xpReward: 0,
-            distance: 0,
-            elevation: 0,
-            description: 'Percorso libero senza quest predefinita.',
-            coords: [[45.2850, 7.5620]],
-            region: '',
-            difficulty: 1,
-            isFreeExploration: true
+    async finalizeQuestCompletion(aq, qp) {
+        const q = aq.quests;
+        if (!q) return;
+
+        const effects = this.getEquippedEffects();
+        const xpBonus = (effects.xp_bonus || 0) / 100;
+        const xpReward = Math.round(q.xpReward * (1 + xpBonus));
+        const leveledUp = GameEngine.processLevelUp(this.player, xpReward);
+
+        // Bridge rewards based on accumulated activity data
+        const activityData = {
+            distance: qp.distance,
+            elevation: qp.elevation,
+            duration: qp.duration
         };
-        this.beginTracking();
-    }
+        const result = BridgeEngine.applyRules(activityData, effects);
+        const eff = result.effects || {};
 
-    beginTracking() {
-        const quest = this.currentQuest;
-        if (!quest) return;
-        this.trackPoints = [];
-        this.totalDistance = 0;
-        this.totalElevation = 0;
-        this.startTime = Date.now();
-        document.title = `\u2694\uFE0F ${quest.title} — 0.00 km`;
-
-        document.getElementById('trackingTitle').textContent = quest.title;
-        document.getElementById('trackingScreen').classList.add('active');
-
-        this.tabTitleInterval = setInterval(() => {
-            const km = (this.totalDistance / 1000).toFixed(2);
-            document.title = `\u2694\uFE0F ${this.currentQuest?.title || ''} — ${km} km`;
-        }, 3000);
-
-        setTimeout(() => {
-            this.trackingMap = L.map('trackingMap').setView(quest.coords[0], 14);
-            L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17 }).addTo(this.trackingMap);
-            L.polyline(quest.coords, { color: '#4a8c3f', weight: 4, opacity: 0.5 }).addTo(this.trackingMap);
-            this.tracker = new GPSTracker(point => this.handleTrackPoint(point));
-            this.tracker.start();
-            this.timerInterval = setInterval(() => this.updateTimer(), 1000);
-        }, 100);
-    }
-
-    handleTrackPoint(point) {
-        if (this.trackPoints.length > 0) {
-            const last = this.trackPoints[this.trackPoints.length - 1];
-            const dist = GameEngine.calculateDistance(last.lat, last.lng, point.lat, point.lng);
-            this.totalDistance += dist;
-            if (point.alt && last.alt && point.alt > last.alt) this.totalElevation += point.alt - last.alt;
-        }
-        this.trackPoints.push(point);
-        L.circleMarker([point.lat, point.lng], { radius: 6, color: '#fff', fillColor: '#4a8c3f', fillOpacity: 1 }).addTo(this.trackingMap);
-        this.trackingMap.setView([point.lat, point.lng], this.trackingMap.getZoom());
-        document.getElementById('trackDistance').textContent = (this.totalDistance / 1000).toFixed(2);
-        document.getElementById('trackElevation').textContent = Math.round(this.totalElevation);
-    }
-
-    updateTimer() {
-        const elapsed = Date.now() - this.startTime;
-        const minutes = Math.floor(elapsed / 60000);
-        const seconds = Math.floor((elapsed % 60000) / 1000);
-        document.getElementById('trackTime').textContent =
-            `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    }
-
-    togglePause() {
-        const btn = document.getElementById('pauseBtn');
-        if (this.tracker?.watchId) {
-            this.tracker.stop();
-            clearInterval(this.timerInterval);
-            btn.innerHTML = '\u25B6\uFE0F Riprendi';
-        } else {
-            this.tracker?.start();
-            this.timerInterval = setInterval(() => this.updateTimer(), 1000);
-            btn.innerHTML = '\u23F8\uFE0F Pausa';
-        }
-    }
-
-    stopTracking() {
-        clearInterval(this.tabTitleInterval);
-        document.title = '\u2694\uFE0F QuestTracker RPG';
-        this.tracker?.stop();
-        clearInterval(this.timerInterval);
-        const validation = GameEngine.validateQuest(this.trackPoints, this.currentQuest);
-        if (validation.valid) {
-            this.completeQuest(validation.stats);
-        } else {
-            alert(`Quest non valida: ${validation.reason}`);
-            document.getElementById('trackingScreen').classList.remove('active');
-        }
-    }
-
-    async completeQuest(stats) {
-        const quest = this.currentQuest;
-        const bridgeResult = BridgeEngine.applyRules({
-            type: quest.type, distance: stats.distance,
-            elevation: stats.elevation, duration: stats.duration
-        });
-        const leveledUp = GameEngine.processLevelUp(this.player, quest.xpReward);
         this.player.questsCompleted++;
-        this.player.totalDistance += stats.distance;
-        this.player.totalElevation += stats.elevation;
-        this.player.totalTime += stats.duration;
-
-        const eff = bridgeResult.effects;
         if (eff.forza) this.player.forza = (this.player.forza || 0) + eff.forza;
         if (eff.agilita) this.player.agilita = (this.player.agilita || 0) + eff.agilita;
         if (eff.costituzione) this.player.costituzione = (this.player.costituzione || 0) + eff.costituzione;
@@ -888,114 +915,42 @@ class App {
         if (eff.cristalli) this.fantasyResources.cristalli += eff.cristalli;
         if (eff.punti_esplorazione) this.fantasyResources.punti_esplorazione += eff.punti_esplorazione;
 
-        this.progress[quest.id] = { completedAt: Date.now(), stats };
-        this.saveProgress();
+        // Remove from active quests, mark as completed
+        this.activeQuests = this.activeQuests.filter(a => a.quest_id !== aq.quest_id);
+        delete this.questProgress[aq.quest_id];
+        this.completedQuestIds.add(aq.quest_id);
+        this.saveQuestProgress();
+        localStorage.setItem('questtracker_completed_quests', JSON.stringify([...this.completedQuestIds]));
         this.savePlayer();
-        if (this.questLayers[quest.id]) this.questLayers[quest.id].setStyle({ opacity: 1 });
 
-        // Journal entry
-        let jTitle = `Completata: ${quest.title}`;
-        let jDesc = `+${quest.xpReward} XP`;
+        // Sync to Supabase
+        if (this.userId) {
+            try {
+                await SupaDB.completeQuestWithProgress(this.userId, aq.quest_id);
+                await this.refreshFantasyResources();
+            } catch (err) {
+                console.warn('[App] Sync quest completion error:', err);
+            }
+        }
+
+        // Journal
+        let jTitle = `Completata: ${q.title}`;
+        let jDesc = `+${xpReward} XP`;
         const summary = BridgeEngine.getEffectsSummary(eff);
-        if (summary.length > 0) jDesc += ` \u2022 ${summary.join(' \u2022 ')}`;
+        if (summary.length > 0) jDesc += ` · ${summary.join(' · ')}`;
         this.addJournalEntry('quest', jTitle, jDesc);
 
         if (leveledUp) {
             this.addJournalEntry('levelup', `Livello ${this.player.level}!`, 'Hai raggiunto un nuovo livello di potere.');
         }
 
-        this.syncQuestToSupabase(quest, stats);
-        this.completeGuildQuest(quest, stats);
-
-        document.getElementById('trackingScreen').classList.remove('active');
-        this.showCompletionModal(leveledUp, quest, bridgeResult);
         this.updateHero();
-        this.renderQuests();
-    }
+        this.renderBacheca();
 
-    showCompletionModal(leveledUp, quest, bridgeResult) {
-        const modal = document.getElementById('completionModal');
-        modal.classList.add('active');
-        const isFree = quest.isFreeExploration;
-        document.getElementById('modalIcon').textContent = leveledUp ? '\u{1F38A}' : (isFree ? '\u{1F9ED}' : '\u{1F389}');
-        document.getElementById('modalTitle').textContent = leveledUp ? 'LEVEL UP!' : (isFree ? 'ESPLORAZIONE COMPLETATA!' : 'QUEST COMPLETATA!');
-        let text;
-        if (isFree) {
-            text = 'Hai esplorato nuovi territori!';
-        } else if (leveledUp) {
-            text = `Sei salito al livello ${this.player.level}!`;
-        } else {
-            text = `Hai guadagnato ${quest.xpReward} XP`;
-        }
-        const summary = BridgeEngine.getEffectsSummary(bridgeResult.effects);
-        if (summary.length > 0) text += `<br><br><span style="font-size:13px;color:#e8b830;">${summary.join(' \u2022 ')}</span>`;
-        document.getElementById('modalText').innerHTML = text;
-
-        const box = modal.querySelector('.modal-box');
-        box.querySelectorAll('.particle-container').forEach(p => p.remove());
-        if (bridgeResult.effects.cristalli) {
-            this.spawnParticles(box);
-        }
-    }
-
-    spawnParticles(container) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'particle-container';
-        for (let i = 0; i < 16; i++) {
-            const p = document.createElement('div');
-            p.className = 'particle';
-            p.textContent = '\u2726';
-            p.style.left = `${10 + Math.random() * 80}%`;
-            p.style.animationDelay = `${Math.random() * 1.2}s`;
-            p.style.fontSize = `${14 + Math.random() * 18}px`;
-            wrapper.appendChild(p);
-        }
-        container.appendChild(wrapper);
-        setTimeout(() => wrapper.remove(), 2500);
-    }
-
-    async completeGuildQuest(quest, stats) {
-        if (!this.userId || !quest) return;
-        const active = this.activeQuests?.find(aq => aq.quest_id == quest.id);
-        if (!active) return;
-        try {
-            await SupaDB.completeQuestWithProgress(this.userId, quest.id);
-            await this.initGuild();
-            await this.refreshFantasyResources();
-            this.renderGuild();
-            this.addJournalEntry('quest', 'Avanzamento Gilda',
-                `La quest "${quest.title}" è stata completata e registrata nella Gilda.`);
-        } catch (err) {
-            console.warn('[QuestTracker] Guild completion error:', err);
-        }
-    }
-
-    async syncQuestToSupabase(quest, stats) {
-        if (!this.userId) return;
-        try {
-            const activity = await SupaDB.saveActivity(
-                this.userId, quest.id.startsWith('hc-') || quest.id.startsWith('free-') ? null : quest.id,
-                quest.type, stats, this.trackPoints
-            );
-            await SupaDB.saveQuestProgress(this.userId, quest.id, stats);
-            if (activity?.id) {
-                await SupaDB.applyBridgeRules(this.userId, activity.id, quest.type, {
-                    distance_km: stats.distance, elevation_m: stats.elevation,
-                    duration_minutes: stats.duration,
-                    avg_speed_kmh: stats.duration > 0 ? (stats.distance / (stats.duration / 60)) : 0
-                });
-            }
-            // Sync journal
-            if (this.journal.length > 0) {
-                const lastEntries = this.journal.slice(-3);
-                for (const e of lastEntries) {
-                    await SupaDB.supa.rpc('add_journal_entry', {
-                        p_user_id: this.userId, p_entry_type: e.type,
-                        p_title: e.title, p_description: e.desc
-                    }).catch(() => {});
-                }
-            }
-        } catch (err) { console.warn('Supabase sync failed:', err); }
+        this.addEvent('quest_complete', {
+            title: leveledUp ? '⚡ LEVEL UP!' : '✅ Quest Completata!',
+            text: `"${q.title}" — ${jDesc}`
+        });
     }
 
     // ── Guild System ──
@@ -1003,17 +958,23 @@ class App {
     async initGuild() {
         if (!this.userId) return;
         try {
-            this.activeQuests = await SupaDB.getActiveQuests(this.userId);
-            this.areaProgress = await SupaDB.getAreaProgress(this.userId);
+            const [activeQuests, areaProgress] = await Promise.all([
+                SupaDB.getActiveQuests(this.userId),
+                SupaDB.getAreaProgress(this.userId)
+            ]);
+            this.activeQuests = activeQuests || [];
+            this.areaProgress = areaProgress || [];
             this.itemsCatalog = await SupaDB.getItems();
             this.titlesCatalog = await SupaDB.getTitles();
             this.playerItems = await SupaDB.getPlayerItems(this.userId);
             this.playerTitles = await SupaDB.getPlayerTitles(this.userId);
-            // Check titles on init (catches any that were earned offline)
             await SupaDB.checkTitles(this.userId);
             this.playerTitles = await SupaDB.getPlayerTitles(this.userId);
+
+            // Load quest progress from DB
+            await this.loadQuestProgressFromDB();
         } catch (err) {
-            console.warn('[QuestTracker] Guild init error:', err);
+            console.warn('[App] Guild init error:', err);
             this.activeQuests = [];
             this.areaProgress = [];
             this.itemsCatalog = [];
@@ -1068,49 +1029,86 @@ class App {
             const q = aq.quests;
             if (!q) return '';
             const isGA = q.quest_type === 'grande_avventura';
+            const qp = this.questProgress[aq.quest_id];
+            const pct = qp ? this.calcProgressPercent(q, qp) : 0;
             return `<div class="guild-card ${isGA ? 'ga-quest' : ''}">
                 <div class="guild-card-title">${q.emoji || ''} ${q.title}</div>
                 <div class="guild-card-meta">${q.difficulty || ''}${q.distance ? ' · ' + q.distance + 'km' : ''}${q.elevation ? ' · ' + q.elevation + 'm D+' : ''}</div>
-                <div class="guild-card-progress">${isGA ? '⚔️ Grande Avventura' : 'Completala con una attività'}</div>
+                ${!isGA && qp ? `
+                    <div class="quest-slider-container">
+                        <div class="quest-slider-bar">
+                            <div class="quest-slider-fill" style="width:${pct}%"></div>
+                        </div>
+                        <div class="quest-slider-label">${Math.round(pct)}% · ${qp.distance.toFixed(1)}/${q.distance || '?'}km</div>
+                    </div>
+                ` : ''}
+                <div class="guild-card-progress">${isGA ? '⚔️ Grande Avventura' : (pct >= 100 ? '✅ Pronta per completare!' : '📡 Tracking passivo...')}</div>
             </div>`;
         }).join('');
+    }
+
+    calcProgressPercent(q, qp) {
+        const d = qp?.distance || 0;
+        const e = qp?.elevation || 0;
+        const du = qp?.duration || 0;
+        let pct = 0;
+        if (q.distance > 0) pct += 0.5 * Math.min(d / q.distance, 1);
+        if (q.elevation > 0) pct += 0.3 * Math.min(e / q.elevation, 1);
+        if (q.duration > 0) pct += 0.2 * Math.min(du / q.duration, 1);
+        return Math.min(pct * 100, 100);
     }
 
     renderBacheca() {
         const list = document.getElementById('bachecaList');
         const areas = this.areaProgress || [];
         const currentArea = areas.find(a => a.is_unlocked && !a.is_completed);
-        if (!currentArea) {
-            list.innerHTML = '<div class="empty-state">Nessuna area disponibile.</div>';
-            return;
-        }
-        const areaMeta = currentArea.fantasy_map_areas;
-        document.getElementById('currentAreaName').textContent = areaMeta?.name || 'Sconosciuta';
-        const needed = areaMeta?.required_quests_completed || 5;
-        const done = currentArea.normal_quests_done || 0;
-        document.getElementById('currentAreaProgress').textContent = `(${done}/${needed} quest completate)`;
 
+        // Show area info if available
+        if (currentArea) {
+            const areaMeta = currentArea.fantasy_map_areas;
+            document.getElementById('currentAreaName').textContent = areaMeta?.name || 'Sconosciuta';
+            const needed = areaMeta?.required_quests_completed || 5;
+            const done = currentArea.normal_quests_done || 0;
+            document.getElementById('currentAreaProgress').textContent = `(${done}/${needed} quest completate)`;
+        } else {
+            const allCompleted = areas.length > 0 && areas.every(a => a.is_completed);
+            document.getElementById('currentAreaName').textContent = allCompleted ? '🏁 Tutte completate!' : '🌍 Tutte le quest';
+            document.getElementById('currentAreaProgress').textContent = '';
+        }
+
+        // Build quest list: try current area first, fallback to all normal quests
         const activeIds = new Set((this.activeQuests || []).map(aq => aq.quest_id));
-        const areaQuests = (this.quests || []).filter(q =>
-            q.area_id === currentArea.area_id && q.quest_type === 'normal' && !this.progress[q.id]);
+        let areaQuests = (this.quests || []).filter(q =>
+            q.quest_type === 'normal' && !this.completedQuestIds.has(q.id));
+
+        if (currentArea) {
+            const matching = areaQuests.filter(q => q.area_id === currentArea.area_id);
+            if (matching.length > 0) areaQuests = matching;
+        }
+
         const freeSlots = 2 - (this.activeQuests || []).filter(aq => aq.quests?.quest_type !== 'grande_avventura').length;
 
+        // Update bacheca quest count (active normal quests / max)
+        const countEl = document.getElementById('bachecaQuestCount');
+        if (countEl) countEl.textContent = (this.activeQuests || []).filter(aq => aq.quests?.quest_type !== 'grande_avventura').length;
+
         if (areaQuests.length === 0) {
-            const allDone = (this.quests || []).filter(q =>
-                q.area_id === currentArea.area_id && q.quest_type === 'normal').every(q => this.progress[q.id]);
-            list.innerHTML = allDone
-                ? '<div class="empty-state">Tutte le quest completate! Torna presto per nuove sfide.</div>'
-                : '<div class="empty-state">Nessuna quest disponibile in quest\'area.</div>';
+            list.innerHTML = '<div class="empty-state">Nessuna quest disponibile al momento.</div>';
             return;
         }
         list.innerHTML = areaQuests.map(q => {
             const isActive = activeIds.has(q.id);
-            return `<div class="guild-card ${isActive ? 'active' : ''}">
+            const completed = this.questProgress[q.id] && this.calcProgressPercent(q, this.questProgress[q.id]) >= 100;
+            return `<div class="guild-card ${isActive ? 'active' : ''} ${completed ? 'completed' : ''}">
                 <div class="guild-card-title">${q.emoji || ''} ${q.title}</div>
                 <div class="guild-card-desc">${q.description || ''}</div>
-                <div class="guild-card-meta">${q.difficulty || 'media'}${q.distance ? ' · ' + q.distance + 'km' : ''}${q.elevation ? ' · ' + q.elevation + 'm' : ''} · ${q.xp_reward || 0} XP</div>
-                ${!isActive && freeSlots > 0 ? `<button class="btn-accept" data-quest-id="${q.id}">➕ Accetta</button>` : ''}
-                ${isActive ? '<span class="badge-active">✅ Accettata</span>' : ''}
+                <div class="guild-card-meta">${q.difficulty || 'media'}${q.distance ? ' · ' + q.distance + 'km' : ''}${q.elevation ? ' · ' + q.elevation + 'm' : ''} · ${q.xpReward || 0} XP</div>
+                <div class="guild-card-status">
+                    ${isActive ? this.renderBachecaSlider(q) : ''}
+                    ${completed ? '<span class="badge-completed">✅ Completata</span>' : ''}
+                    ${!isActive && !completed && freeSlots > 0 ? `<button class="btn-accept" data-quest-id="${q.id}">➕ Accetta</button>` : ''}
+                    ${!isActive && completed ? '<span class="badge-done">🏁 Già completata</span>' : ''}
+                </div>
             </div>`;
         }).join('');
 
@@ -1119,27 +1117,54 @@ class App {
         });
     }
 
+    renderBachecaSlider(q) {
+        const qp = this.questProgress[q.id];
+        if (!qp) return '';
+        const pct = this.calcProgressPercent(q, qp);
+        return `
+            <div class="quest-slider-container">
+                <div class="quest-slider-bar">
+                    <div class="quest-slider-fill" style="width:${pct}%"></div>
+                </div>
+                <div class="quest-slider-label">${Math.round(pct)}%</div>
+            </div>
+        `;
+    }
+
     async handleAcceptQuest(questId) {
-        if (!this.userId) return;
+        const q = this.quests.find(q => q.id == questId);
+        if (!q) { alert('Quest non trovata.'); return; }
+
         const active = this.activeQuests || [];
         const normalCount = active.filter(aq => aq.quests?.quest_type !== 'grande_avventura').length;
         if (normalCount >= 2) {
             alert('Hai già 2 quest attive! Completane una prima di accettarne un\'altra.');
             return;
         }
+
+        if (!this.userId) {
+            // Local/offline mode: accept directly into activeQuests
+            const fakeActive = { quest_id: q.id, quests: q };
+            this.activeQuests.push(fakeActive);
+            this.addJournalEntry('quest', 'Nuova Quest Accettata',
+                `Hai accettato la quest: ${q.title}`);
+            this.renderGuild();
+            return;
+        }
+
         try {
-            const result = await SupaDB.acceptQuest(this.userId, questId);
-            if (result === false || result === null) {
+            const result = await SupaDB.acceptQuest(this.userId, q.id);
+            if (result === false || result === null || result === undefined) {
                 alert('Impossibile accettare la quest. Forse è già attiva o l\'area non è sbloccata.');
                 return;
             }
             await this.initGuild();
             this.renderGuild();
             this.addJournalEntry('quest', 'Nuova Quest Accettata',
-                `Hai accettato la quest: ${this.quests.find(q => q.id == questId)?.title || ''}`);
+                `Hai accettato la quest: ${q.title}`);
         } catch (err) {
-            console.warn('[QuestTracker] Accept quest error:', err);
-            alert('Errore durante l\'accettazione della quest.');
+            console.warn('[App] Accept quest error:', err);
+            alert('Errore durante l\'accettazione della quest: ' + (err?.message || err));
         }
     }
 
@@ -1149,14 +1174,20 @@ class App {
         document.getElementById('merchantRupie').textContent = resources.rupie || 0;
         document.getElementById('merchantCristalli').textContent = resources.cristalli || 0;
 
-        const items = this.itemsCatalog || [];
+        // Fallback items quando il catalogo DB è vuoto
+        const FALLBACK_ITEMS = [
+            { id: 'fb-bastone', name: 'Bastone del Viandante', description: 'Riduce la fatica sui lunghi tragitti.', emoji: '\u{1F3AF}', cost_rupie: 50, cost_cristalli: 0, slot_type: 'tool', effect_type: 'mtb_endurance', effect_value: 15, is_on_sale: false },
+            { id: 'fb-scarpe', name: 'Scarpe del Vento', description: 'Aumenta la velocità massima consentita.', emoji: '\u{1F45F}', cost_rupie: 80, cost_cristalli: 0, slot_type: 'footwear', effect_type: 'speed_bonus', effect_value: 10, is_on_sale: false },
+            { id: 'fb-amuleto', name: 'Amuleto della Terra', description: 'Riduce il dislivello richiesto per le validazioni.', emoji: '\u{1F48D}', cost_rupie: 120, cost_cristalli: 1, slot_type: 'amulet', effect_type: 'elevation_reduction', effect_value: 20, is_on_sale: false },
+            { id: 'fb-bussola', name: 'Bussola Magica', description: 'Sblocca un\'area senza requisiti.', emoji: '\u{1F9ED}', cost_rupie: 200, cost_cristalli: 3, slot_type: 'tool', effect_type: 'area_unlock', effect_value: null, is_on_sale: false },
+            { id: 'fb-forziere', name: 'Forziere Antico', description: 'Aggiunge Costituzione extra a fine Grande Avventura.', emoji: '\u{1F9F0}', cost_rupie: 150, cost_cristalli: 2, slot_type: 'amulet', effect_type: 'stat_bonus', effect_value: 5, is_on_sale: true, sale_price_rupie: 100 },
+            { id: 'fb-esca', name: 'Esca Comune', description: 'Aumenta del 10% la probabilità di pesca.', emoji: '\u{1F41B}', cost_rupie: 30, cost_cristalli: 0, slot_type: 'tool', effect_type: 'fishing_luck', effect_value: 10, is_on_sale: false },
+            { id: 'fb-amuleto-pesca', name: 'Amuleto del Pescatore', description: 'Aumenta del 15% la probabilità di pescare pesci rari.', emoji: '\u{1F4A7}', cost_rupie: 120, cost_cristalli: 2, slot_type: 'amulet', effect_type: 'fishing_luck', effect_value: 15, is_on_sale: false }
+        ];
+
+        const items = (this.itemsCatalog && this.itemsCatalog.length > 0) ? this.itemsCatalog : FALLBACK_ITEMS;
         const ownedIds = new Set((this.playerItems || []).map(pi => pi.item_id));
         const equippedIds = new Set((this.playerItems || []).filter(pi => pi.equipped).map(pi => pi.item_id));
-
-        if (items.length === 0) {
-            list.innerHTML = '<div class="empty-state">Nessun oggetto disponibile al momento.</div>';
-            return;
-        }
         list.innerHTML = items.map(item => {
             const owned = ownedIds.has(item.id);
             const equipped = equippedIds.has(item.id);
@@ -1189,50 +1220,178 @@ class App {
     }
 
     async handleBuyItem(itemId) {
-        if (!this.userId) return;
-        try {
-            const result = await SupaDB.purchaseItem(this.userId, itemId);
-            if (!result) {
-                alert('Acquisto fallito. Rupie o Cristalli insufficienti!');
-                return;
+        const items = (this.itemsCatalog && this.itemsCatalog.length > 0) ? this.itemsCatalog : [];
+        const item = items.find(i => i.id == itemId);
+        if (!item) { alert('Oggetto non trovato.'); return; }
+
+        const resources = this.fantasyResources || { rupie: 0, cristalli: 0 };
+        const actualCost = item.is_on_sale && item.sale_price_rupie ? item.sale_price_rupie : item.cost_rupie;
+        if ((resources.rupie || 0) < actualCost || (resources.cristalli || 0) < (item.cost_cristalli || 0)) {
+            alert('Rupie o Cristalli insufficienti!');
+            return;
+        }
+
+        resources.rupie -= actualCost;
+        resources.cristalli -= (item.cost_cristalli || 0);
+
+        if (!this.playerItems) this.playerItems = [];
+        this.playerItems.push({
+            id: Date.now(),
+            item_id: itemId,
+            equipped: false,
+            items_catalog: item
+        });
+
+        this.fantasyResources = resources;
+        this.savePlayer();
+        this.renderMerchant();
+        this.updateNpcDialogues();
+        this.addJournalEntry('item', 'Acquisto', `Hai comprato: ${item.name}`);
+
+        if (this.userId) {
+            try {
+                await SupaDB.purchaseItem(this.userId, itemId);
+                await this.refreshFantasyResources();
+                this.playerItems = await SupaDB.getPlayerItems(this.userId);
+            } catch (err) {
+                console.warn('[App] Purchase sync error:', err);
             }
-            const item = this.itemsCatalog.find(i => i.id == itemId);
-            await this.refreshFantasyResources();
-            this.playerItems = await SupaDB.getPlayerItems(this.userId);
-            this.renderMerchant();
-            this.updateNpcDialogues();
-            this.addJournalEntry('item', 'Acquisto', `Hai comprato: ${item?.name || 'oggetto'}`);
-        } catch (err) {
-            console.warn('[QuestTracker] Purchase error:', err);
-            alert('Errore durante l\'acquisto.');
         }
     }
 
     async handleEquipItem(itemId) {
-        if (!this.userId) return;
-        try {
-            await SupaDB.equipItem(this.userId, itemId);
-            this.playerItems = await SupaDB.getPlayerItems(this.userId);
-            this.renderMerchant();
-            this.renderInventory();
-            this.updateHero();
-        } catch (err) {
-            console.warn('[QuestTracker] Equip error:', err);
-            alert('Errore durante l\'equipaggiamento.');
+        // Toggle equip in local playerItems
+        const pi = (this.playerItems || []).find(p => p.item_id == itemId);
+        if (pi) {
+            // Unequip other items in the same slot
+            const slot = pi.items_catalog?.slot_type;
+            if (slot) {
+                (this.playerItems || []).forEach(p => {
+                    if (p.equipped && p.items_catalog?.slot_type === slot) p.equipped = false;
+                });
+            }
+            pi.equipped = !pi.equipped;
+        }
+        this.renderMerchant();
+        this.renderInventory();
+        this.updateHero();
+
+        if (this.userId) {
+            try {
+                await SupaDB.equipItem(this.userId, itemId);
+                this.playerItems = await SupaDB.getPlayerItems(this.userId);
+            } catch (err) {
+                console.warn('[App] Equip sync error:', err);
+            }
         }
     }
 
-    initMap() {
-        if (this.map) return;
-        this.map = L.map('map').setView([45.2850, 7.5620], 12);
-        L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17 }).addTo(this.map);
-        this.quests.forEach(quest => {
-            const completed = this.progress[quest.id];
-            this.questLayers[quest.id] = L.polyline(quest.coords, {
-                color: quest.type === 'trekking' ? '#4a8c3f' : '#b84040',
-                weight: 4, opacity: completed ? 1 : 0.3
-            }).addTo(this.map);
-        });
+    // ── Adventure Mode (GPX Recording) ──
+
+    startAdventureMode() {
+        if (this.adventureMode) return;
+        this.adventureMode = true;
+        this.adventureStartTime = Date.now();
+        this.adventureTrack = [];
+
+        document.getElementById('advStartBtn').classList.add('hidden');
+        document.getElementById('advStopBtn').classList.remove('hidden');
+        document.getElementById('advDistance').textContent = '0.00';
+        document.getElementById('advElevation').textContent = '0';
+        document.getElementById('advTime').textContent = '00:00';
+
+        this.adventureTimer = setInterval(() => {
+            if (!this.adventureStartTime) return;
+            const elapsed = Math.floor((Date.now() - this.adventureStartTime) / 1000);
+            const m = Math.floor(elapsed / 60);
+            const s = elapsed % 60;
+            document.getElementById('advTime').textContent =
+                `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }, 1000);
+    }
+
+    stopAdventureMode() {
+        this.adventureMode = false;
+        clearInterval(this.adventureTimer);
+
+        document.getElementById('advStartBtn').classList.remove('hidden');
+        document.getElementById('advStopBtn').classList.add('hidden');
+
+        if (this.adventureTrack.length > 5) {
+            const gpx = this.exportGPX();
+            this.downloadGPX(gpx);
+            const dist = parseFloat(document.getElementById('advDistance').textContent);
+            const elev = parseInt(document.getElementById('advElevation').textContent);
+            this.addJournalEntry('exploration', 'Avventura Completata',
+                `Hai percorso ${dist.toFixed(2)}km con ${elev}m di dislivello. ${this.adventureTrack.length} punti tracciati.`);
+        }
+
+        this.adventureTrack = [];
+        this.adventureStartTime = null;
+    }
+
+    updateLiveCounters(distKm, elevM) {
+        if (!this.adventureMode) return;
+        const distEl = document.getElementById('advDistance');
+        const elevEl = document.getElementById('advElevation');
+        if (distEl) {
+            const curr = parseFloat(distEl.textContent) || 0;
+            distEl.textContent = (curr + distKm).toFixed(2);
+        }
+        if (elevEl) {
+            const curr = parseInt(elevEl.textContent) || 0;
+            elevEl.textContent = curr + elevM;
+        }
+    }
+
+    exportGPX() {
+        const points = this.adventureTrack;
+        if (points.length === 0) return '';
+
+        const header = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="QuestTrackerRPG" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><name>Avventura ${new Date(this.adventureStartTime || Date.now()).toISOString().split('T')[0]}</name><trkseg>`;
+        const footer = `  </trkseg></trk></gpx>`;
+
+        const trackPoints = points.map(p => {
+            const ele = p.alt ? `<ele>${p.alt}</ele>` : '';
+            const time = p.timestamp ? `<time>${new Date(p.timestamp).toISOString()}</time>` : '';
+            return `    <trkpt lat="${p.lat}" lon="${p.lng}">${ele}${time}</trkpt>`;
+        }).join('\n');
+
+        return `${header}\n${trackPoints}\n${footer}`;
+    }
+
+    downloadGPX(gpx) {
+        const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const dateStr = new Date().toISOString().split('T')[0];
+        a.href = url;
+        a.download = `avventura-${dateStr}.gpx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // ── Event Queue (Toast Notifications) ──
+
+    addEvent(type, data) {
+        this.eventQueue.push({ type, data, ts: Date.now() });
+        this.showNextEvent();
+    }
+
+    showNextEvent() {
+        if (this.eventQueue.length === 0) return;
+        const evt = this.eventQueue.shift();
+        if (evt.type === 'quest_complete') {
+            const modal = document.getElementById('completionModal');
+            document.getElementById('modalIcon').textContent = '⚡';
+            document.getElementById('modalTitle').textContent = evt.data.title;
+            document.getElementById('modalText').innerHTML = evt.data.text;
+            modal.classList.add('active');
+        }
     }
 }
 

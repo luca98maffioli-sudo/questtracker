@@ -74,13 +74,15 @@ class CombatEngine {
     openEncounter(monster) {
         this.currentMonster = monster;
         const p = this.app.player;
+        const effects = this.app.getEquippedEffects?.() || {};
+        const tempForza = effects.temp_stat || 0;
 
         document.getElementById('combatIcon').textContent = monster.emoji;
         document.getElementById('combatName').textContent = monster.name;
         document.getElementById('combatDesc').textContent = monster.description;
 
         const reqs = [
-            { label: 'FORZA', required: monster.requiredForza, current: p.forza || 0, icon: '\u{1F4AA}' },
+            { label: 'FORZA', required: monster.requiredForza, current: (p.forza || 0) + tempForza, icon: '\u{1F4AA}' },
             { label: 'AGILITÀ', required: monster.requiredAgilita, current: p.agilita || 0, icon: '\u{1F3C3}' },
             { label: 'COSTITUZIONE', required: monster.requiredCostituzione, current: p.costituzione || 0, icon: '\u{1F5A1}\u{FE0F}' }
         ];

@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QuestTracker RPG</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -51,9 +50,8 @@
         <nav class="nav-tabs">
             <button class="nav-tab active" data-screen="hero">&#x2694;&#65039; Eroe</button>
             <button class="nav-tab" data-screen="guild">&#x1F3F0; Gilda</button>
-            <button class="nav-tab" data-screen="quests">&#x1F4DC; Quest</button>
             <button class="nav-tab" data-screen="fantasy">&#x1F3DE;&#65039; Mondo F.</button>
-            <button class="nav-tab" data-screen="map">&#x1F5FA;&#65039; Mappa</button>
+            <button class="nav-tab" data-screen="map">&#x1F5FA;&#65039; Avventura</button>
             <button class="nav-tab" data-screen="diary">&#x1F4D6; Diario</button>
         </nav>
 
@@ -134,6 +132,7 @@
                         <div class="inv-owned-title">&#x1F4E6; Zaino (<span id="ownedCount">0</span>)</div>
                         <div id="ownedItemsList"><div class="empty-state">Nessun oggetto nello zaino.</div></div>
                     </div>
+                    <div id="itemEffectsBadge"></div>
                 </div>
                 <div class="hero-card" id="titlesCard">
                     <div class="hero-card-title">&#x1F3C5; Titoli</div>
@@ -173,9 +172,9 @@
                     <div id="activeQuestsList"><div class="empty-state">Nessuna quest attiva. Scegli dalla bacheca!</div></div>
                 </div>
 
-                <!-- Bacheca -->
+                <!-- Bacheca (quest attive + disponibili) -->
                 <div class="guild-section">
-                    <div class="guild-section-title">&#x1F4CB; Bacheca</div>
+                    <div class="guild-section-title">&#x1F4CB; Bacheca <span class="active-count">(<span id="bachecaQuestCount">0</span>/2 attive)</span></div>
                     <div class="guild-area-info" id="guildAreaInfo">
                         <span class="area-label">Area:</span>
                         <span class="area-name" id="currentAreaName">Foresta dei Sussurri</span>
@@ -200,34 +199,26 @@
                 </div>
             </section>
 
-            <!-- Quests -->
-            <section class="screen" id="questsScreen">
-                <div class="free-exploration-card" id="freeExplorationCard">
-                    <div class="free-exp-title">&#x1F9ED; Esplorazione Libera</div>
-                    <div class="free-exp-desc">Traccia un percorso qualsiasi, anche senza una quest predefinita: la ricompensa si calcola in base a distanza, dislivello e durata.</div>
-                    <div class="free-exp-btns">
-                        <button class="btn btn-secondary" id="freeExpWalkBtn">&#x1F97E; A piedi</button>
-                        <button class="btn btn-secondary" id="freeExpBikeBtn">&#x1F6B5; MTB</button>
-                    </div>
-                </div>
-                <div class="quest-filters">
-                    <button class="filter-btn active" data-filter="all">Tutte</button>
-                    <button class="filter-btn" data-filter="available">Disponibili</button>
-                    <button class="filter-btn" data-filter="completed">Completate</button>
-                    <button class="filter-btn" data-filter="trekking">Trekking</button>
-                    <button class="filter-btn" data-filter="mtb">MTB</button>
-                </div>
-                <div id="questList"></div>
-            </section>
-
             <!-- Mondo Fantasy -->
             <section class="screen" id="fantasyScreen">
                 <div id="fantasyMapContent"></div>
             </section>
 
-            <!-- Mappa Reale -->
+            <!-- Avventura (Modalità GPX) -->
             <section class="screen" id="mapScreen">
-                <div id="map"></div>
+                <div class="adventure-mode">
+                    <div class="hero-card-title">&#x1F5FA;&#65039; Modalità Avventura</div>
+                    <p class="adventure-desc">Registra un'uscita per esportare il tracciato in GPX. I km e il dislivello contribuiscono comunque alle tue quest attive.</p>
+                    <div class="adventure-counters">
+                        <div class="mini-stat"><div class="mini-stat-value" id="advDistance">0.00</div><div class="mini-stat-label">Km</div></div>
+                        <div class="mini-stat"><div class="mini-stat-value" id="advElevation">0</div><div class="mini-stat-label">Dislivello +</div></div>
+                        <div class="mini-stat"><div class="mini-stat-value" id="advTime">00:00</div><div class="mini-stat-label">Tempo</div></div>
+                    </div>
+                    <div class="adventure-controls">
+                        <button class="btn btn-primary" id="advStartBtn">&#x25B6;&#xFE0F; Inizia Registrazione</button>
+                        <button class="btn btn-danger hidden" id="advStopBtn">&#x23F9;&#xFE0F; Stop & Esporta GPX</button>
+                    </div>
+                </div>
             </section>
 
             <!-- Diario -->
@@ -261,7 +252,7 @@
                 <span class="quest-xp">&#x26A1; <span id="qdXp">0</span> XP</span>
             </div>
             <div class="quest-detail-btns">
-                <button class="btn btn-primary" id="qdStartBtn">&#x2694;&#xFE0F; Inizia Avventura</button>
+                <button class="btn btn-primary" id="qdStartBtn">&#x2694;&#xFE0F; Accetta Quest</button>
                 <button class="btn btn-secondary" id="qdCancelBtn">&#x2716; Annulla</button>
             </div>
         </div>
@@ -279,36 +270,6 @@
             <div class="quest-detail-btns">
                 <button class="btn btn-primary" id="combatAttackBtn">&#x2694;&#xFE0F; Attacca!</button>
                 <button class="btn btn-secondary hidden" id="combatCloseBtn">&#x2716; Chiudi</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tracking -->
-    <div class="tracking-screen" id="trackingScreen">
-        <div class="tracking-header">
-            <div style="font-size: 14px; font-weight: 700;" id="trackingTitle">Quest</div>
-        </div>
-        <div class="tracking-map">
-            <div id="trackingMap"></div>
-        </div>
-        <div class="tracking-stats">
-            <div class="stats-grid">
-                <div class="mini-stat">
-                    <div class="mini-stat-value" id="trackDistance">0.00</div>
-                    <div class="mini-stat-label">Km</div>
-                </div>
-                <div class="mini-stat">
-                    <div class="mini-stat-value" id="trackElevation">0</div>
-                    <div class="mini-stat-label">Dislivello +</div>
-                </div>
-                <div class="mini-stat">
-                    <div class="mini-stat-value" id="trackTime">00:00</div>
-                    <div class="mini-stat-label">Tempo</div>
-                </div>
-            </div>
-            <div class="tracking-controls">
-                <button class="btn btn-secondary" id="pauseBtn">&#x23F8;&#65039; Pausa</button>
-                <button class="btn btn-danger" id="stopBtn">&#x23F9;&#65039; Termina</button>
             </div>
         </div>
     </div>
@@ -333,14 +294,31 @@
         </div>
     </div>
 
+    <!-- Fishing Overlay -->
+    <div class="overlay" id="fishingOverlay">
+        <div class="overlay-content fishing-overlay-content">
+            <div id="fishingContent">
+                <div class="fishing-scene">
+                    <div class="fishing-water">
+                        <div class="fishing-waves"></div>
+                        <div class="fishing-bobber">&#x1F3A3;</div>
+                    </div>
+                    <div class="fishing-controls">
+                        <p class="fishing-hint">Preparati a pescare!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="js/supabase.js"></script>
     <script src="js/game-engine.js"></script>
     <script src="js/gps-tracker.js"></script>
     <script src="js/bridge-engine.js"></script>
     <script src="js/fantasy-map.js"></script>
     <script src="js/combat-engine.js"></script>
+    <script src="js/minigame-engine.js"></script>
     <script src="js/app.js"></script>
     <script>
         if ('serviceWorker' in navigator) {

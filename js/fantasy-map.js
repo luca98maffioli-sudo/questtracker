@@ -104,6 +104,9 @@ class FantasyMap {
             const prevArea = this.areas[index - 1];
             return this.discoveries.includes(prevArea.id);
         }
+        // Check if any equipped item grants area_unlock for this area
+        const effects = this.app.getEquippedEffects?.() || {};
+        if (effects.area_unlock && effects.area_unlock === area.id) return true;
         const prog = progMap[area.id];
         return prog?.is_unlocked === true;
     }

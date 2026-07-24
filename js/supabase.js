@@ -112,7 +112,7 @@ window.SupaDB = (() => {
 
         async getActiveQuests(userId) {
             const { data } = await supa.from('player_active_quests')
-                .select('*, quests(title, type, difficulty, xp_reward, distance, elevation, description, region_id, area_id, coords, npc_dialogue, lore)')
+                .select('*, quests(title, type, difficulty, xp_reward, distance, elevation, description, region_id, area_id, coords, npc_dialogue, lore, quest_type, emoji)')
                 .eq('user_id', userId);
             return data || [];
         },

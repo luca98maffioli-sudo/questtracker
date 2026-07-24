@@ -976,3 +976,74 @@ body {
     margin-bottom: 6px; letter-spacing: 0.5px;
 }
 .guild-card.on-sale { border-color: var(--gold); background: rgba(232,184,48,0.04); }
+
+/* ── Quest Slider (barre di progresso) ── */
+.quest-slider { margin: 8px 0; }
+.quest-slider-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+.quest-slider-track { height: 6px; background: var(--bg-dark); border-radius: 3px; overflow: hidden; }
+.quest-slider-fill { height: 100%; width: 0; background: var(--primary); border-radius: 3px; transition: width 2s linear; }
+.quest-slider-fill.elev { background: var(--gold); }
+.quest-card.active-quest { border-color: var(--primary); background: rgba(74,140,63,0.04); }
+.quest-card.completed { opacity: 0.6; border-color: var(--border); }
+
+/* ── Modalità Avventura ── */
+.adventure-mode { padding: 20px; text-align: center; }
+.adventure-desc { font-size: 13px; color: var(--text-dim); margin: 12px 0 20px; line-height: 1.6; }
+.adventure-counters { display: flex; justify-content: center; gap: 32px; margin-bottom: 20px; }
+
+/* ── Item Effects Badge ── */
+.effects-badge { font-size: 11px; color: var(--gold); padding: 6px 10px; margin-top: 8px; border-radius: 3px; background: rgba(232,184,48,0.06); text-align: center; }
+
+/* ── Bacheca card con slider ── */
+.bacheca-card { padding: 12px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 10px; background: var(--bg-card); }
+.bacheca-card.active { border-color: var(--primary); background: rgba(74,140,63,0.04); }
+.bacheca-card.completed { opacity: 0.5; }
+.bacheca-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.bacheca-icon { font-size: 22px; flex-shrink: 0; }
+.bacheca-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.bacheca-meta { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+.bacheca-meta span { margin-right: 12px; }
+.bacheca-actions { margin-top: 8px; }
+.btn-accept { background: var(--primary); color: white; border: none; border-radius: 3px; padding: 5px 14px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.btn-accept:hover { background: var(--primary-dim); }
+.btn-accept:disabled { opacity: 0.4; cursor: default; }
+.bacheca-empty { font-size: 12px; color: var(--text-dim); text-align: center; padding: 20px 0; }
+
+/* ── Fishing Minigame ── */
+.fishing-overlay-content { max-width: 420px !important; }
+.fishing-scene { text-align: center; }
+.fishing-water { position: relative; height: 160px; background: linear-gradient(180deg, #1a3a4a 0%, #0d2835 100%); border-radius: 8px; margin-bottom: 16px; overflow: hidden; border: 1px solid #2a5a6a; }
+.fishing-waves { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0px, transparent 20px, rgba(100,200,255,0.04) 20px, rgba(100,200,255,0.04) 40px); animation: waveShift 3s linear infinite; }
+@keyframes waveShift { 0% { transform: translateX(0); } 100% { transform: translateX(40px); } }
+.fishing-bobber { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 36px; animation: bobFloat 2s ease-in-out infinite; }
+@keyframes bobFloat { 0%,100% { transform: translate(-50%,-50%); } 50% { transform: translate(-50%,-60%); } }
+.bobber-waiting { animation: bobWait 0.6s ease-in-out infinite; }
+@keyframes bobWait { 0%,100% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.15); } }
+.bobber-bite { animation: bobBite 0.15s ease-in-out infinite; }
+@keyframes bobBite { 0%,100% { transform: translate(-50%,-50%) rotate(0deg); } 25% { transform: translate(-50%,-50%) rotate(-15deg); } 75% { transform: translate(-50%,-50%) rotate(15deg); } }
+.fishing-ripple { position: absolute; top: 50%; left: 50%; width: 60px; height: 60px; transform: translate(-50%,-50%); border-radius: 50%; border: 2px solid rgba(100,200,255,0.2); animation: rippleExpand 2s ease-out infinite; }
+@keyframes rippleExpand { 0% { width: 20px; height: 20px; opacity: 1; } 100% { width: 120px; height: 120px; opacity: 0; } }
+.fishing-splash { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 40px; animation: splashPop 0.5s ease-out; }
+@keyframes splashPop { 0% { transform: translateX(-50%) scale(0.5); opacity: 1; } 100% { transform: translateX(-50%) scale(1.5); opacity: 0; } }
+.fishing-catch { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 56px; animation: catchRise 0.5s ease-out; }
+@keyframes catchRise { 0% { transform: translate(-50%,-30%) scale(0.3); opacity: 0; } 100% { transform: translate(-50%,-50%) scale(1); opacity: 1; } }
+.fishing-controls { padding: 0 8px 12px; }
+.fishing-hint { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+.fishing-bite-text { color: var(--danger); font-weight: 700; animation: pulse 0.5s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+.fishing-bait-select { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; font-size: 13px; }
+.fishing-bait-select select { background: var(--bg-surface); color: var(--text); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; font-size: 12px; }
+.fishing-reel-btn { animation: reelPulse 0.8s ease-in-out infinite; }
+@keyframes reelPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(74,140,63,0.4); } 50% { box-shadow: 0 0 0 8px rgba(74,140,63,0); } }
+.fishing-result-card { padding: 16px; border-radius: 6px; margin-bottom: 14px; }
+.fishing-result-card.rarity-common { background: rgba(100,100,100,0.1); border: 1px solid #666; }
+.fishing-result-card.rarity-rare { background: rgba(50,120,200,0.1); border: 1px solid #3278c8; }
+.fishing-result-card.rarity-epic { background: rgba(160,80,200,0.1); border: 1px solid #a050c8; }
+.fishing-result-card.rarity-legendary { background: rgba(232,184,48,0.12); border: 1px solid var(--gold); box-shadow: 0 0 16px rgba(232,184,48,0.15); }
+.fishing-result-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.fishing-result-rarity { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; color: var(--text-dim); }
+.fishing-result-card.rarity-rare .fishing-result-rarity { color: #3278c8; }
+.fishing-result-card.rarity-epic .fishing-result-rarity { color: #a050c8; }
+.fishing-result-card.rarity-legendary .fishing-result-rarity { color: var(--gold); }
+.fishing-result-flavor { font-size: 12px; font-style: italic; color: var(--text-dim); margin-bottom: 10px; }
+.fishing-result-rewards { display: flex; justify-content: center; gap: 16px; font-size: 13px; }

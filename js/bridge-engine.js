@@ -1,7 +1,6 @@
 class BridgeEngine {
     static parseActivity(activityData) {
         return {
-            type: activityData.type || 'unknown',
             distance_km: activityData.distance || 0,
             elevation_m: activityData.elevation || 0,
             duration_minutes: activityData.duration || 0,
@@ -16,36 +15,32 @@ class BridgeEngine {
         const effects = {};
         const ie = itemEffects || {};
 
-        // Gli effetti degli oggetti modificano le soglie delle regole bridge
         const elevReduction = (ie.elevation_reduction || 0) / 100;
-        const mtbEndurance = (ie.mtb_endurance || 0) / 100;
+        const mtbEndurance = parsed.avg_speed_kmh >= 8 ? (ie.mtb_endurance || 0) / 100 : 0;
         const effectiveElev = parsed.elevation_m * (1 - elevReduction);
-        const effectiveDist = parsed.distance_km * (1 - (parsed.type === 'mtb' ? mtbEndurance : 0));
+        const effectiveDist = parsed.distance_km * (1 - mtbEndurance);
 
-        if (parsed.type === 'trekking' && effectiveElev >= 300) {
-            effects.forza = 2;
-            effects.rupie = 30;
+        if (effectiveElev >= 300) {
+            effects.forza = (effects.forza || 0) + 2;
+            effects.rupie = (effects.rupie || 0) + 30;
         }
-        if ((parsed.type === 'trekking' || parsed.type === 'mtb') && effectiveDist >= 8) {
+        if (effectiveDist >= 8) {
             effects.costituzione = (effects.costituzione || 0) + 1;
             effects.rupie = (effects.rupie || 0) + 20;
         }
-        if (parsed.type === 'mtb' && parsed.avg_speed_kmh >= 15) {
-            effects.agilita = 2;
+        if (parsed.avg_speed_kmh >= 15) {
+            effects.agilita = (effects.agilita || 0) + 2;
             effects.rupie = (effects.rupie || 0) + 40;
         }
         if (parsed.duration_minutes >= 90) {
             effects.costituzione = (effects.costituzione || 0) + 1;
-            effects.punti_esplorazione = 5;
+            effects.punti_esplorazione = (effects.punti_esplorazione || 0) + 5;
         }
         if (effectiveElev >= 800) {
-            effects.cristalli = 1;
+            effects.cristalli = (effects.cristalli || 0) + 1;
             effects.forza = (effects.forza || 0) + 3;
             effects.rupie = (effects.rupie || 0) + 100;
         }
-
-        console.log('[BridgeEngine] Activity parsed:', parsed);
-        console.log('[BridgeEngine] Effects applied:', effects);
 
         return { parsed, effects };
     }
